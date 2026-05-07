@@ -87,10 +87,13 @@ class MuonConfigurationSettingsModel(ConfigurationSettingsModel, HasInputStructu
     def set_model_state(self, parameters: dict):
         for key, value in parameters.items():
             if key in self.traits():
-                self.set_trait(key, value)
+                if value is None:
+                    self._set_default(key)
+                else:
+                    self.set_trait(key, value)
     
     def _get_default(self, trait):
-        return self.traits()[trait].default_value
+        return self.traits()[trait].default(self)
 
     def _set_default(self, trait):
         self.set_trait(trait, self._get_default(trait))

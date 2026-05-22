@@ -11,19 +11,19 @@ from aiida_quantumespresso.calculations.functions.create_kpoints_from_distance i
     create_kpoints_from_distance,
 )
 from aiidalab_qe.common.mixins import HasInputStructure
-from aiidalab_qe.common.panel import ConfigurationSettingsModel
+from aiidalab_qe.common.panel import PanelModel
 from ase.build import make_supercell
 
 from aiida_muon.utils.sites_supercells import niche_add_impurities, gensup, compute_suggest_supercell_size, generate_supercell_with_impurities
 
 from undi.undi_analysis import check_enough_isotopes
 
-class MuonConfigurationSettingsModel(ConfigurationSettingsModel, HasInputStructure):
+class MuonConfigurationSettingsModel(PanelModel, HasInputStructure):
     
     title = "Muon settings"
     
     dependencies = [
-        "input_structure",
+        "structure_uuid",
     ]
     
     # the following three define the three possible workflow steps.
@@ -81,7 +81,7 @@ class MuonConfigurationSettingsModel(ConfigurationSettingsModel, HasInputStructu
     def get_model_state(self):
         return {
             k: getattr(self, k) for k, v in self.traits().items() if
-            k != "input_structure"
+            k != "structure_uuid"
         }
     
     def set_model_state(self, parameters: dict):
@@ -98,7 +98,7 @@ class MuonConfigurationSettingsModel(ConfigurationSettingsModel, HasInputStructu
     def _set_default(self, trait):
         self.set_trait(trait, self._get_default(trait))
         
-    def reset(self, exclude=['input_structure', 'supercell', 'warning_banner','undi_fields','blockers']):
+    def reset(self, exclude=['structure_uuid', 'supercell', 'warning_banner','undi_fields','blockers']):
         with self.hold_trait_notifications():
             for trait in self.traits():
                 if trait not in exclude:

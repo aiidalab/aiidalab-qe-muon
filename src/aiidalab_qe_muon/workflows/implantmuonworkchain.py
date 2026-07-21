@@ -6,7 +6,6 @@ from aiida import orm
 from aiida.plugins import WorkflowFactory
 from aiida.engine import if_
 
-from aiida_workgraph import WorkGraph
 from aiida_workgraph.engine.workgraph import WorkGraphEngine
 from aiidalab_qe_muon.undi_interface.workflows.workgraphs import (
     MultiSites,
@@ -398,12 +397,12 @@ class ImplantMuonWorkChain(WorkChain):
         # need to parse all the output structures, and loop on them.
 
         metadata = self.inputs.get("undi_metadata", None)
-        workgraph = MultiSites(
+        workgraph = MultiSites.build(
             structure_group=self.ctx.structure_group,
             code = getattr(self.inputs, "undi_code", None),
             max_hdims = self.inputs.get("undi_max_hdims", [10**2, 10**4, 10**6, 10**8]),
             B_mods = self.inputs.get("undi_fields", [0, 2e-3, 4e-3, 6e-3, 8e-3]),
-            metadata = metadata,
+            task_metadata = metadata,
             )
         inputs = {
             "workgraph_data": workgraph.to_dict(),

@@ -404,11 +404,9 @@ class ImplantMuonWorkChain(WorkChain):
             B_mods = self.inputs.get("undi_fields", [0, 2e-3, 4e-3, 6e-3, 8e-3]),
             task_metadata = metadata,
             )
-        inputs = {
-            "workgraph_data": workgraph.to_dict(),
-            "metadata": {"call_link_label": "MultiSiteUndiPolarizationAndKT"},
-            
-        }
+        inputs = workgraph.to_engine_inputs(
+            metadata={"call_link_label": "MultiSiteUndiPolarizationAndKT"},
+        )
         process = self.submit(WorkGraphEngine, **inputs)
         self.report(
             f"submitting `Workgraph` for polarization calculation: <PK={process.pk}>"

@@ -1,53 +1,40 @@
 import typing as t
-from aiida_workgraph import task, WorkGraph, TaskPool
-#from aiidalab_qe_muon.undi_interface.calculations.pythonjobs import undi_run, compute_KT
 
-from aiida_workgraph import task
+from aiida_workgraph import spec, task
 
-@task.graph_builder(outputs=[{"name": "results", "from": "ctx.tmp_out"}])
+from aiidalab_qe_muon.undi_interface.calculations.pythonjobs import (
+    compute_KT,
+    undi_run,
+)
+
+
+def _metadata_with_label(metadata, label):
+    """Return task metadata with a stable call-link label."""
+    if hasattr(metadata, "get_dict"):
+        metadata = metadata.get_dict()
+    metadata = dict(metadata or {})
+    metadata["call_link_label"] = label
+    return metadata
+
+
+@task.graph
 def multiple_undi_analysis(
     structure,
-    B_mods: t.List[t.Union[float, int]] = [0.0], # Units are Tesla.
-    atom_as_muon: str = 'H',
+    B_mods: t.List[t.Union[float, int]] = [0.0],
+    atom_as_muon: str = "H",
     max_hdims: t.List[t.Union[float, int]] = [1e1],
     convergence_check: bool = False,
-    algorithm: str = 'fast',
+    algorithm: str = "fast",
     angular_integration_steps: int = 7,
-    code = None, # if None, default python3@localhost will be used.
-    metadata = {"options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}},
-):
-    
-    def undi_run(
-        structure, # should be StructureData, and then in the pythonjob we deserialize into ASE. for provenance.
-        B_mod = 0.0,
-        atom_as_muon = 'H',
-        max_hdim = 10e6,
-        convergence_check = False,
-        algorithm  = 'fast',
-        angular_integration_steps  = 7,
-        ) -> dict:
-        from undi.undi_analysis import execute_undi_analysis
-
-        results = execute_undi_analysis(
-            structure,
-            B_mod=B_mod,
-            atom_as_muon=atom_as_muon,
-            max_hdim=max_hdim,
-            convergence_check=convergence_check,
-            algorithm=algorithm,
-            angular_integration_steps=angular_integration_steps
-        )
-
-        return {"result": results}
-    
-    wg = WorkGraph()
-    
-    t = 0
+    code=None,
+    task_metadata={"options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}},
+) -> spec.namespace(results=spec.dynamic(t.Any)):
+    """Build parallel UNDI analyses for all fields and Hilbert-space sizes."""
+    results = {}
+    index = 0
     for B_mod in B_mods:
         for max_hdim in max_hdims:
-            tmp = wg.add_task(
-                TaskPool.workgraph.pythonjob,
-                function=undi_run,
+            output = undi_run(
                 structure=structure,
                 B_mod=B_mod,
                 max_hdim=max_hdim,
@@ -55,86 +42,46 @@ def multiple_undi_analysis(
                 convergence_check=convergence_check,
                 algorithm=algorithm,
                 angular_integration_steps=angular_integration_steps,
-                metadata=metadata,
-                name=f"iter_{t}",
-                deserializers={
-                    "aiida.orm.nodes.data.structure.StructureData": "aiida_pythonjob.data.deserializer.structure_data_to_atoms",
-                },
-                # override the default `AtomsData`
-                serializers={
-                    "ase.atoms.Atoms": "aiida_pythonjob.data.serializer.atoms_to_structure_data"
-                },
-                code = code,
+                metadata=_metadata_with_label(task_metadata, f"iter_{index}"),
+                code=code,
                 register_pickle_by_value=True,
             )
-            wg.update_ctx({f"tmp_out.iter_{t}": tmp.outputs.result})
-            t+=1
+            results[f"iter_{index}"] = output.results
+            index += 1
 
-    return wg
+    return {"results": results}
 
 
-@task.graph_builder(
-    outputs=[
-        {"name": "results", "from": "ctx.res"},
-        ]
-)
+@task.graph
 def UndiAndKuboToyabe(
     structure,
-    B_mods: t.List[t.Union[float, int]] = [0.0], # Units are Tesla.
-    atom_as_muon: str = 'H',
+    B_mods: t.List[t.Union[float, int]] = [0.0],
+    atom_as_muon: str = "H",
     max_hdims: t.List[t.Union[float, int]] = [1e1],
     convergence_check: bool = False,
-    algorithm: str = 'fast',
+    algorithm: str = "fast",
     angular_integration_steps: int = 7,
-    code=None, # if None, default python3@localhost will be used.
-    metadata = {"options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}},
-):
-    wg = WorkGraph()
-
-    # This conversion is done in the pythonjob de-serializat:qion
-    #if isinstance(structure, StructureData):
-    #    structure = structure.get_ase()
-    
-    def compute_KT(
-        structure,  # should be StructureData, and then in the pythonjob we deserialize into ASE. for provenance.
-        ):
-        import numpy as np
-        from undi.kubo_toyabe.KT import compute_second_moments, kubo_toyabe
-
-        t = np.linspace(0, 20e-6, 1000)  # time is seconds
-        sm = compute_second_moments(structure)
-        KT = kubo_toyabe(t, np.sum(list(sm.values())))
-
-        return {
-            "result": {
-                "t": (np.array(t)*1e6).tolist(), # this time is in microseconds
-                "KT": KT,
-            },
-        }
-
-    KT_task = wg.add_task(
-        TaskPool.workgraph.pythonjob,
-        function=compute_KT,
-        structure=structure,
-        name="KuboToyabe_run",
-        code = code,
-        metadata=metadata,
-        deserializers={
-            "aiida.orm.nodes.data.structure.StructureData": "aiida_pythonjob.data.deserializer.structure_data_to_atoms",
-        },
-        # override the default `AtomsData`
-        serializers={
-            "ase.atoms.Atoms": "aiida_pythonjob.data.serializer.atoms_to_structure_data"
-        },
-        register_pickle_by_value=True,
+    code=None,
+    task_metadata={"options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}},
+) -> spec.namespace(
+    results=spec.namespace(
+        KT_task=t.Any,
+        undi_conv_task=spec.dynamic(t.Any),
+        undi_task=spec.dynamic(t.Any),
     )
-    wg.update_ctx({f"res.KT_task": KT_task.outputs.result})
-    
-    # Convergence check
-    # in the future, we can add a logic to first converge, and then run UNDI for the B_mods list
+):
+    """Build the UNDI and Kubo-Toyabe polarization analyses."""
+    results = {
+        "KT_task": compute_KT(
+            structure=structure,
+            code=code,
+            metadata=_metadata_with_label(task_metadata, "KuboToyabe_run"),
+            register_pickle_by_value=True,
+        ).results
+    }
+
     if convergence_check:
-        undi_conv_task = wg.add_task(
-            multiple_undi_analysis,
+        results["undi_conv_task"] = multiple_undi_analysis(
             structure=structure,
             B_mods=[0.0],
             max_hdims=max_hdims,
@@ -142,14 +89,14 @@ def UndiAndKuboToyabe(
             convergence_check=convergence_check,
             algorithm=algorithm,
             angular_integration_steps=angular_integration_steps,
-            name="convergence_check",
-            code = code,
-            metadata=metadata,
-        )
-        wg.update_ctx({f"res.undi_conv_task": undi_conv_task.outputs.results})
+            code=code,
+            task_metadata=task_metadata,
+            metadata={"call_link_label": "convergence_check"},
+        ).results
+    else:
+        results["undi_conv_task"] = {}
 
-    undi_task = wg.add_task(
-        multiple_undi_analysis,
+    results["undi_task"] = multiple_undi_analysis(
         structure=structure,
         B_mods=B_mods,
         max_hdims=max_hdims[-2:-1],
@@ -157,37 +104,45 @@ def UndiAndKuboToyabe(
         convergence_check=False,
         algorithm=algorithm,
         angular_integration_steps=angular_integration_steps,
-        name="undi_runs",
-        code = code,
-        metadata=metadata,
-    )
-    wg.update_ctx({f"res.undi_task": undi_task.outputs.results})
+        code=code,
+        task_metadata=task_metadata,
+        metadata={"call_link_label": "undi_runs"},
+    ).results
 
-    return wg
+    return {"results": results}
 
-@task.graph_builder(outputs=[{"name": "results", "from": "ctx.res"}])
+
+@task.graph
 def MultiSites(
-    structure_group,
-    code=None, # if None, default python3@localhost will be used.
-    B_mods: t.List[t.Union[float, int]] = [0, 2e-3, 4e-3, 6e-3, 8e-3], # Units are Tesla.
-    max_hdims: t.List[t.Union[float, int]] = [10**2, 10**4, 10**6, 10**8], # we use the [-2:-1] for the undi run (not the convergence check, let's say).
-    metadata = {"options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}}, # just a default.
-    ):
-    
-    wg = WorkGraph("PolarizationMultiSites")
-    
-    for i, (idx, structure) in enumerate(structure_group.items()):
-        res = wg.add_task(
-            UndiAndKuboToyabe,
+    structure_group: t.Annotated[dict, spec.dynamic(t.Any)],
+    code=None,
+    B_mods: t.List[t.Union[float, int]] = [0, 2e-3, 4e-3, 6e-3, 8e-3],
+    max_hdims: t.List[t.Union[float, int]] = [10**2, 10**4, 10**6, 10**8],
+    task_metadata={"options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}},
+) -> spec.namespace(
+    results=spec.dynamic(
+        spec.namespace(
+            KT_task=t.Any,
+            undi_conv_task=spec.dynamic(t.Any),
+            undi_task=spec.dynamic(t.Any),
+        )
+    )
+):
+    """Build polarization analyses for all candidate muon sites."""
+    results = {}
+    for index, (site_index, structure) in enumerate(structure_group.items()):
+        output = UndiAndKuboToyabe(
             structure=structure,
             B_mods=B_mods,
             max_hdims=max_hdims,
-            convergence_check=i==0,  # maybe the convergence can be done for only one site, as done here now.
-            algorithm='fast',
-            name=f"polarization_structure_{idx}",
+            convergence_check=index == 0,
+            algorithm="fast",
             code=code,
-            metadata=metadata,
+            task_metadata=task_metadata,
+            metadata={
+                "call_link_label": f"polarization_structure_{site_index}"
+            },
         )
-        wg.update_ctx({f"res.site_{idx}": res.outputs.results})
-    
-    return wg
+        results[f"site_{site_index}"] = output.results
+
+    return {"results": results}

@@ -21,7 +21,7 @@ dependencies = [
     "pymatgen>=2023.9.25",
     "aiida-workgraph~=0.5.1",
     "aiida-pythonjob~=0.2.5",
-    "undi @ git+https://github.com/mikibonacci/undi.git@update",
+    "undi @ git+https://github.com/mikibonacci/undi.git@2217e6be4212c69c37afa7e04e790a3d7eedd717",
     "pybind11"
 ]
 

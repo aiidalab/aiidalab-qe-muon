@@ -33,7 +33,7 @@ def fetch_data(
             node.inputs.function_kwargs.max_hdim.value for node in descendants
         ]
         results = [
-            node.outputs.result.value["results"] for node in descendants
+            node.outputs.results.value["results"] for node in descendants
         ]
         isotopes = [
             [res["cluster_isotopes"], res["spins"], res["probability"]]
@@ -46,7 +46,7 @@ def fetch_data(
             KT_output = (
                 main_node.base.links.get_outgoing()
                 .get_node_by_label("KuboToyabe_run")
-                .outputs.result.get_dict()
+                .outputs.results.get_dict()
             )
         else:
             KT_output = None

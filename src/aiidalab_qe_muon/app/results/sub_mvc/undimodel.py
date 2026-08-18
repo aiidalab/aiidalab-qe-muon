@@ -201,7 +201,7 @@ class PolarizationModel(Model):
                 )
 
                 results = [
-                    node.outputs.result.get_list() for node in descendants
+                    node.outputs.results.get_list() for node in descendants
                 ]
                 
                 fields = [
@@ -225,7 +225,7 @@ class PolarizationModel(Model):
                     self.muons[muon_index].KT_output = (
                         main_node.base.links.get_outgoing()
                         .get_node_by_label("KuboToyabe_run")
-                        .outputs.result.get_dict()
+                        .outputs.results.get_dict()
                     )
                 
                 # re-ordering all the results according to the fields or the max_hdim.

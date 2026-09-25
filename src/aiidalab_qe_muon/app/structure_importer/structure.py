@@ -15,7 +15,7 @@ import traitlets as tl
 from aiida import engine, orm, plugins
 
 from aiidalab_widgets_base.data import LigandSelectorWidget
-from aiidalab_widgets_base.utils import StatusHTML, exceptions, get_ase_from_file, get_formula
+from aiidalab_widgets_base.utils import StatusHTML, get_ase_from_file, get_formula
 from aiidalab_widgets_base.viewers import StructureDataViewer
 
 from pymatgen.io.cif import CifParser

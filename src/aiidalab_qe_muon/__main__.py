@@ -52,5 +52,19 @@ def setup_python3():
         print("Code python3@localhost is already installed! Nothing to do here.")
 
 
+@cli.command(help="Verify the python3@localhost post-install setup.")
+@click.option("-p", "--profile", default="default", help="AiiDA profile name.")
+def verify_post_install(profile):
+    load_profile(profile)
+    try:
+        load_code("python3@localhost")
+    except NotExistent as error:
+        raise click.ClickException(
+            "AiiDA code python3@localhost is not configured. Run setup-python3."
+        ) from error
+
+    click.echo("Muon post-install setup is valid.")
+
+
 if __name__ == "__main__":
     cli()

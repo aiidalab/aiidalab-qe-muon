@@ -51,8 +51,8 @@ ignore = ["E501", "E402", "TRY003", "RUF012", "N806"]
 [project.urls]
 Source = "https://github.com/aiidalab/aiidalab-qe-muon"
 
-[project.entry-points.'aiidalab_qe.properties']
-"muonic" = "aiidalab_qe_muon.app:property"
+[project.entry-points.'aiidalab_qe.plugins']
+"muonic" = "aiidalab_qe_muon.app:MuonPlugin"
 
 [project.entry-points.'aiida.workflows']
 "muon_app.implant_muon" = "aiidalab_qe_muon.workflows.implantmuonworkchain:ImplantMuonWorkChain"

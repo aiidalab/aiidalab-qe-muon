@@ -249,7 +249,7 @@ class ImplantMuonWorkChain(WorkChain):
             **kwargs,
         )
         # builder.findmuon = builder_findmuon
-        for k, v in builder_findmuon.items():
+        for k, v in builder_findmuon._inputs(prune=True).items():
             if k in ("structure", "pythonjob"):
                 continue
             if k == "impuritysupercellconv":

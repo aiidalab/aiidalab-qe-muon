@@ -104,21 +104,21 @@ def get_builder(codes, structure, parameters):
          
     overrides = {
         # "relax":{
-        "base": scf_overrides,
+        "base_relax": scf_overrides,
         #    },
         "pwscf": scf_overrides,
     }
         
     # we always enforce the mixing mode and num_steps
-    overrides["base"]["pw"]["parameters"]["ELECTRONS"]["mixing_mode"] = "local-TF"
+    overrides["base_relax"]["pw"]["parameters"]["ELECTRONS"]["mixing_mode"] = "local-TF"
     overrides["pwscf"]["pw"]["parameters"]["ELECTRONS"]["mixing_mode"] ="local-TF"
-    overrides["base"]["pw"]["parameters"]["ELECTRONS"]["electron_maxstep"] = 500
+    overrides["base_relax"]["pw"]["parameters"]["ELECTRONS"]["electron_maxstep"] = 500
     overrides["pwscf"]["pw"]["parameters"]["ELECTRONS"]["electron_maxstep"] = 500
 
     
     pseudo_family_muons = parameters["muonic"].pop("pseudo_choice", "")
     # dummy logic.
-    pseudo_family = overrides["base"]["pseudo_family"]
+    pseudo_family = overrides["base_relax"]["pseudo_family"]
         
     pp_metadata = {
         "options": {
@@ -137,7 +137,7 @@ def get_builder(codes, structure, parameters):
         )
         overrides["impuritysupercellconv"] = overrides
 
-    overrides["base"]["pw"]["metadata"] = create_resource_config(codes.get("pw_muons"))
+    overrides["base_relax"]["pw"]["metadata"] = create_resource_config(codes.get("pw_muons"))
     
     undi_metadata = create_resource_config(codes.get("undi_code"))
     #undi_metadata["options"]["prepend_text"] =  \
@@ -190,7 +190,7 @@ def get_builder(codes, structure, parameters):
 
     if "parallelization" in codes.get("pw_muons"):
         parallelization = codes.get("pw_muons")["parallelization"]
-        builder.findmuon.relax.base.pw.parallelization = Dict(
+        builder.findmuon.relax.base_relax.pw.parallelization = Dict(
             dict=parallelization
         )
         builder.findmuon.pwscf.pw.parallelization = Dict(

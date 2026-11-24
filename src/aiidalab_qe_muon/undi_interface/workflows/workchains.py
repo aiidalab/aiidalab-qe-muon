@@ -1,0 +1,370 @@
+"""WorkChains computing the muon polarization with UNDI and the Kubo-Toyabe model.
+
+The three work chains are nested::
+
+    MultiSitesWorkChain                  one child per muon site
+     └─ UndiAndKuboToyabeWorkChain       call link label: ``polarization_structure_{site}``
+         ├─ PythonJob (compute_KT)       ``KuboToyabe_run``
+         ├─ UndiMultiAnalysisWorkChain   ``convergence_check`` (B = 0, all ``max_hdims``)
+         │   └─ PythonJob (undi_run)     ``iter_{i}``
+         └─ UndiMultiAnalysisWorkChain   ``undi_runs`` (all ``B_mods``, one ``max_hdim``)
+             └─ PythonJob (undi_run)     ``iter_{i}``
+
+The call link labels are read by the results viewer: do not change them lightly.
+"""
+
+from __future__ import annotations
+
+import copy
+
+from aiida import orm
+from aiida.common.links import LinkType
+from aiida.engine import WorkChain
+
+from aiidalab_qe_muon.undi_interface.calculations.pythonjobs import (
+    prepare_kt_inputs,
+    prepare_undi_run_inputs,
+)
+
+DEFAULT_TASK_METADATA = {
+    "options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}
+}
+
+
+def _get_pythonjob_class():
+    from aiida.plugins import CalculationFactory
+
+    return CalculationFactory("pythonjob.pythonjob")
+
+
+def _with_call_link_label(inputs: dict, label: str) -> dict:
+    """Return the ``PythonJob`` inputs with ``metadata.call_link_label`` set to ``label``."""
+    inputs = dict(inputs)
+    inputs["metadata"] = {**(inputs.get("metadata") or {}), "call_link_label": label}
+    return inputs
+
+
+def _flatten(nested: dict, prefix: str = "") -> dict:
+    """Flatten a nested dictionary into one with dotted keys."""
+    flat = {}
+    for key, value in nested.items():
+        if isinstance(value, dict):
+            flat.update(_flatten(value, f"{prefix}{key}."))
+        else:
+            flat[f"{prefix}{key}"] = value
+    return flat
+
+
+def _returned_results(process: orm.ProcessNode) -> dict:
+    """Return the nodes returned in the ``results`` namespace of a finished child work chain, with dotted keys."""
+    nested = process.base.links.get_outgoing(link_type=LinkType.RETURN).nested()
+    return _flatten(nested.get("results", {}))
+
+
+def _add_undi_inputs(spec, *, B_mods, max_hdims):
+    """Add to ``spec`` the inputs shared by all the work chains."""
+    spec.input(
+        "code",
+        valid_type=orm.AbstractCode,
+        help="The `PythonJob` code used to run the UNDI and Kubo-Toyabe calculations.",
+    )
+    spec.input(
+        "B_mods",
+        valid_type=orm.List,
+        default=lambda: orm.List(list(B_mods)),
+        help="The magnetic fields (in Tesla) for which the polarization is computed.",
+    )
+    spec.input(
+        "max_hdims",
+        valid_type=orm.List,
+        default=lambda: orm.List(list(max_hdims)),
+        help="The maximum Hilbert-space dimensions used to compute (and check the convergence of) the polarization.",
+    )
+    spec.input(
+        "atom_as_muon",
+        valid_type=orm.Str,
+        default=lambda: orm.Str("H"),
+        help="The element in the structure that stands for the muon.",
+    )
+    spec.input(
+        "algorithm",
+        valid_type=orm.Str,
+        default=lambda: orm.Str("fast"),
+        help="The UNDI algorithm.",
+    )
+    spec.input(
+        "angular_integration_steps",
+        valid_type=orm.Int,
+        default=lambda: orm.Int(7),
+        help="The number of steps of the angular integration.",
+    )
+    spec.input(
+        "task_metadata",
+        valid_type=dict,
+        non_db=True,
+        required=False,
+        help="The `metadata` (e.g. `options`) of every `PythonJob`. "
+        "Defaults to `DEFAULT_TASK_METADATA` (single OpenMP thread).",
+    )
+
+
+class UndiMultiAnalysisWorkChain(WorkChain):
+    """Run UNDI in parallel for every combination of magnetic field and Hilbert-space dimension."""
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.input("structure", valid_type=orm.StructureData, help="The structure with the muon.")
+        _add_undi_inputs(spec, B_mods=[0.0], max_hdims=[1e1])
+        spec.input(
+            "convergence_check",
+            valid_type=orm.Bool,
+            default=lambda: orm.Bool(False),
+            help="Run UNDI in the mode used to check the convergence with `max_hdims`.",
+        )
+        spec.outline(cls.setup, cls.run_undi, cls.inspect_undi)
+        spec.output_namespace(
+            "results",
+            dynamic=True,
+            required=False,
+            help="The UNDI results of each run, labelled `iter_{i}`, with `i` running over `B_mods` first, then `max_hdims`.",
+        )
+        spec.exit_code(
+            401, "ERROR_UNDI_RUN_FAILED", message="At least one UNDI `PythonJob` failed."
+        )
+
+    def setup(self):
+        self.ctx.task_metadata = copy.deepcopy(
+            self.inputs.get("task_metadata", DEFAULT_TASK_METADATA)
+        )
+        self.ctx.n_runs = 0
+
+    def run_undi(self):
+        """Submit all the UNDI runs; they are independent, so they run in parallel."""
+        PythonJob = _get_pythonjob_class()
+        index = 0
+        for B_mod in self.inputs.B_mods.get_list():
+            for max_hdim in self.inputs.max_hdims.get_list():
+                label = f"iter_{index}"
+                inputs = prepare_undi_run_inputs(
+                    structure=self.inputs.structure,
+                    code=self.inputs.code,
+                    B_mod=B_mod,
+                    max_hdim=max_hdim,
+                    atom_as_muon=self.inputs.atom_as_muon.value,
+                    convergence_check=self.inputs.convergence_check.value,
+                    algorithm=self.inputs.algorithm.value,
+                    angular_integration_steps=self.inputs.angular_integration_steps.value,
+                    metadata=self.ctx.task_metadata,
+                )
+                future = self.submit(PythonJob, **_with_call_link_label(inputs, label))
+                self.report(f"submitted UNDI run `{label}` <PK={future.pk}>")
+                self.to_context(**{label: future})
+                index += 1
+        self.ctx.n_runs = index
+
+    def inspect_undi(self):
+        """Fail if any run failed, otherwise return the results."""
+        children = {f"iter_{i}": self.ctx[f"iter_{i}"] for i in range(self.ctx.n_runs)}
+        failed = {label: child for label, child in children.items() if not child.is_finished_ok}
+        for label, child in failed.items():
+            self.report(f"UNDI run `{label}` <PK={child.pk}> failed with exit status {child.exit_status}")
+        if failed:
+            return self.exit_codes.ERROR_UNDI_RUN_FAILED
+
+        for label, child in children.items():
+            self.out(f"results.{label}", child.outputs.results)
+
+
+class UndiAndKuboToyabeWorkChain(WorkChain):
+    """Compute the Kubo-Toyabe polarization and the UNDI polarization (with optional convergence check) of one structure."""
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.input("structure", valid_type=orm.StructureData, help="The structure with the muon.")
+        _add_undi_inputs(spec, B_mods=[0.0], max_hdims=[1e1])
+        spec.input(
+            "convergence_check",
+            valid_type=orm.Bool,
+            default=lambda: orm.Bool(False),
+            help="Also run UNDI at zero field for all the `max_hdims`, to check the convergence.",
+        )
+        spec.outline(
+            cls.setup,
+            cls.run_analyses,
+            cls.inspect_analyses,
+        )
+        spec.output(
+            "results.KT_task",
+            valid_type=orm.Data,
+            help="The Kubo-Toyabe polarization.",
+        )
+        spec.output_namespace(
+            "results.undi_conv_task",
+            dynamic=True,
+            required=False,
+            help="The UNDI results of the convergence check (only if `convergence_check`).",
+        )
+        spec.output_namespace(
+            "results.undi_task",
+            dynamic=True,
+            required=False,
+            help="The UNDI results at each field, for the second-to-last `max_hdim`.",
+        )
+        spec.exit_code(401, "ERROR_KT_FAILED", message="The Kubo-Toyabe `PythonJob` failed.")
+        spec.exit_code(
+            402,
+            "ERROR_CONVERGENCE_FAILED",
+            message="The UNDI convergence-check work chain failed.",
+        )
+        spec.exit_code(403, "ERROR_UNDI_FAILED", message="The UNDI work chain failed.")
+
+    def setup(self):
+        self.ctx.task_metadata = copy.deepcopy(
+            self.inputs.get("task_metadata", DEFAULT_TASK_METADATA)
+        )
+
+    def _undi_inputs(self, **overrides):
+        inputs = {
+            "structure": self.inputs.structure,
+            "code": self.inputs.code,
+            "B_mods": self.inputs.B_mods,
+            "max_hdims": self.inputs.max_hdims,
+            "atom_as_muon": self.inputs.atom_as_muon,
+            "algorithm": self.inputs.algorithm,
+            "angular_integration_steps": self.inputs.angular_integration_steps,
+            "task_metadata": self.ctx.task_metadata,
+        }
+        inputs.update(overrides)
+        return inputs
+
+    def run_analyses(self):
+        """Submit the Kubo-Toyabe job and the UNDI work chains; they are independent, so they run in parallel."""
+        PythonJob = _get_pythonjob_class()
+
+        kt_inputs = prepare_kt_inputs(
+            structure=self.inputs.structure,
+            code=self.inputs.code,
+            metadata=self.ctx.task_metadata,
+        )
+        kt_future = self.submit(PythonJob, **_with_call_link_label(kt_inputs, "KuboToyabe_run"))
+        self.report(f"submitted Kubo-Toyabe job <PK={kt_future.pk}>")
+        self.to_context(kt_task=kt_future)
+
+        if self.inputs.convergence_check.value:
+            future = self.submit(
+                UndiMultiAnalysisWorkChain,
+                **self._undi_inputs(
+                    B_mods=orm.List([0.0]),
+                    convergence_check=orm.Bool(True),
+                    metadata={"call_link_label": "convergence_check"},
+                ),
+            )
+            self.report(f"submitted UNDI convergence check <PK={future.pk}>")
+            self.to_context(undi_conv_task=future)
+
+        # Same selection as the former workgraph: the second-to-last Hilbert-space dimension.
+        future = self.submit(
+            UndiMultiAnalysisWorkChain,
+            **self._undi_inputs(
+                max_hdims=orm.List(self.inputs.max_hdims.get_list()[-2:-1]),
+                convergence_check=orm.Bool(False),
+                metadata={"call_link_label": "undi_runs"},
+            ),
+        )
+        self.report(f"submitted UNDI runs <PK={future.pk}>")
+        self.to_context(undi_task=future)
+
+    def inspect_analyses(self):
+        """Fail if any child failed, otherwise return the results."""
+        kt_task = self.ctx.kt_task
+        if not kt_task.is_finished_ok:
+            self.report(f"the Kubo-Toyabe job <PK={kt_task.pk}> failed")
+            return self.exit_codes.ERROR_KT_FAILED
+
+        if self.inputs.convergence_check.value:
+            undi_conv_task = self.ctx.undi_conv_task
+            if not undi_conv_task.is_finished_ok:
+                self.report(f"the UNDI convergence check <PK={undi_conv_task.pk}> failed")
+                return self.exit_codes.ERROR_CONVERGENCE_FAILED
+
+        undi_task = self.ctx.undi_task
+        if not undi_task.is_finished_ok:
+            self.report(f"the UNDI runs <PK={undi_task.pk}> failed")
+            return self.exit_codes.ERROR_UNDI_FAILED
+
+        self.out("results.KT_task", kt_task.outputs.results)
+        if self.inputs.convergence_check.value:
+            for key, node in _returned_results(self.ctx.undi_conv_task).items():
+                self.out(f"results.undi_conv_task.{key}", node)
+        for key, node in _returned_results(undi_task).items():
+            self.out(f"results.undi_task.{key}", node)
+
+
+class MultiSitesWorkChain(WorkChain):
+    """Compute the polarization of all the candidate muon sites.
+
+    The convergence check is run for the first site only.
+    """
+
+    @classmethod
+    def define(cls, spec):
+        super().define(spec)
+        spec.input_namespace(
+            "structure_group",
+            valid_type=orm.StructureData,
+            dynamic=True,
+            help="The structures with the muon, one per site, labelled by the site index.",
+        )
+        _add_undi_inputs(
+            spec,
+            B_mods=[0, 2e-3, 4e-3, 6e-3, 8e-3],
+            max_hdims=[10**2, 10**4, 10**6, 10**8],
+        )
+        spec.outline(cls.setup, cls.run_sites, cls.inspect_sites)
+        spec.output_namespace(
+            "results",
+            dynamic=True,
+            required=False,
+            help="The results of each site, in the `site_{index}` namespaces; see `UndiAndKuboToyabeWorkChain`.",
+        )
+        spec.exit_code(401, "ERROR_SITE_FAILED", message="The polarization of at least one site failed.")
+
+    def setup(self):
+        self.ctx.task_metadata = copy.deepcopy(
+            self.inputs.get("task_metadata", DEFAULT_TASK_METADATA)
+        )
+        self.ctx.site_indexes = list(self.inputs.structure_group.keys())
+
+    def run_sites(self):
+        """Submit one `UndiAndKuboToyabeWorkChain` per site; they run in parallel."""
+        for position, site_index in enumerate(self.ctx.site_indexes):
+            future = self.submit(
+                UndiAndKuboToyabeWorkChain,
+                structure=self.inputs.structure_group[site_index],
+                code=self.inputs.code,
+                B_mods=self.inputs.B_mods,
+                max_hdims=self.inputs.max_hdims,
+                atom_as_muon=self.inputs.atom_as_muon,
+                algorithm=self.inputs.algorithm,
+                angular_integration_steps=self.inputs.angular_integration_steps,
+                task_metadata=self.ctx.task_metadata,
+                convergence_check=orm.Bool(position == 0),
+                metadata={"call_link_label": f"polarization_structure_{site_index}"},
+            )
+            self.report(f"submitted polarization of site {site_index} <PK={future.pk}>")
+            self.to_context(**{f"site_{site_index}": future})
+
+    def inspect_sites(self):
+        """Fail if any site failed, otherwise return the results."""
+        children = {site_index: self.ctx[f"site_{site_index}"] for site_index in self.ctx.site_indexes}
+        failed = {i: child for i, child in children.items() if not child.is_finished_ok}
+        for site_index, child in failed.items():
+            self.report(f"polarization of site {site_index} <PK={child.pk}> failed with exit status {child.exit_status}")
+        if failed:
+            return self.exit_codes.ERROR_SITE_FAILED
+
+        for site_index, child in children.items():
+            for key, node in _returned_results(child).items():
+                self.out(f"results.site_{site_index}.{key}", node)

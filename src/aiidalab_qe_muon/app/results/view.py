@@ -16,7 +16,7 @@ class MuonResultsPanel(ResultsPanel[MuonResultsModel]):
     """General results panel for muons
     
     This panel is used to display the results of the muon spectroscopy calculations.
-    for now, it only displays the results of the FindMuonWorkChain and the Undi WorkGraph.
+    for now, it only displays the results of the FindMuonWorkChain and the Undi WorkChains.
     This is why we call only one model and one widget, but in principle, in the future, it 
     can hosts also Neb and others.
     """

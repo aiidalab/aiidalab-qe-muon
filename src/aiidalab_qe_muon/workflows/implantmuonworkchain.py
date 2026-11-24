@@ -6,9 +6,8 @@ from aiida import orm
 from aiida.plugins import WorkflowFactory
 from aiida.engine import if_
 
-from aiida_workgraph.engine.workgraph import WorkGraphEngine
-from aiidalab_qe_muon.undi_interface.workflows.workgraphs import (
-    MultiSites,
+from aiidalab_qe_muon.undi_interface.workflows.workchains import (
+    MultiSitesWorkChain,
 )
 
 from aiida_quantumespresso.data.hubbard_structure import HubbardStructureData
@@ -130,11 +129,6 @@ class ImplantMuonWorkChain(WorkChain):
             required=False,
             help="The list of kind names to used. Needed to reconstruct kinds if needed.",
         )
-
-        # I think the following is not needed, as we may want to just provide the structure and the fields, max_hdims
-        # and then initialise the workgraph with the structure and the fields and max_hdims.
-        # TOBE understood how to provide a given code (probably the computer... but I need the code)
-        # spec.input_namespace('undi_workgraph', dynamic=True)
 
         ###
         spec.outline(
@@ -393,44 +387,44 @@ class ImplantMuonWorkChain(WorkChain):
             self.ctx.structure_group = {'0':self.ctx.structure}
 
     def compute_polarization(self):
-        # here we will submit the workgraph for the polarization estimation. Via Undi and KT.
-        # need to parse all the output structures, and loop on them.
+        # Submit the polarization estimation (Undi and KT) of all the structures.
+        # The defaults for the fields and the max_hdims are those of the `MultiSitesWorkChain`.
+        inputs = {
+            "structure_group": self.ctx.structure_group,
+            "code": self.inputs.undi_code,
+            "metadata": {"call_link_label": "MultiSiteUndiPolarizationAndKT"},
+        }
+        if "undi_metadata" in self.inputs:
+            inputs["task_metadata"] = self.inputs.undi_metadata
+        if "undi_fields" in self.inputs:
+            inputs["B_mods"] = self.inputs.undi_fields
+        if "undi_max_hdims" in self.inputs:
+            inputs["max_hdims"] = self.inputs.undi_max_hdims
 
-        metadata = self.inputs.get("undi_metadata", None)
-        workgraph = MultiSites.build(
-            structure_group=self.ctx.structure_group,
-            code = getattr(self.inputs, "undi_code", None),
-            max_hdims = self.inputs.get("undi_max_hdims", [10**2, 10**4, 10**6, 10**8]),
-            B_mods = self.inputs.get("undi_fields", [0, 2e-3, 4e-3, 6e-3, 8e-3]),
-            task_metadata = metadata,
-            )
-        inputs = workgraph.to_engine_inputs(
-            metadata={"call_link_label": "MultiSiteUndiPolarizationAndKT"},
-        )
-        process = self.submit(WorkGraphEngine, **inputs)
+        process = self.submit(MultiSitesWorkChain, **inputs)
         self.report(
-            f"submitting `Workgraph` for polarization calculation: <PK={process.pk}>"
+            f"submitting `MultiSitesWorkChain` for polarization calculation: <PK={process.pk}>"
         )
-        self.to_context(workgraph=process)
+        self.to_context(multisites=process)
 
     def results(self):
         """Inspect pol sub-processes."""
-        polarization = self.ctx.get("workgraph", None)
+        polarization = self.ctx.get("multisites", None)
 
-        # should we output the wgraph results here?
-        # Yes, we should collect them in order to easily recover the site index.
         if polarization:
             if not polarization.is_finished_ok:
-                self.report(f"the child WorkGraph with <PK={polarization.pk}> failed")
+                self.report(f"the child MultiSitesWorkChain with <PK={polarization.pk}> failed")
                 return self.exit_codes.ERROR_POLARIZATION_FAILED
             else:
+                # We return the KT of the first site: the results viewer recovers all the sites
+                # (and their index) from the called processes of this node.
+                first_site = next(iter(self.ctx.structure_group))
                 self.out(
-                        "polarization",
-                        #polarization.outputs.execution_count,
-                        polarization.called[0].outputs.results.KT_task,
-                    )
-                self.report(f"Undi calculation was successful.")
-                
+                    "polarization",
+                    polarization.outputs.results[f"site_{first_site}"]["KT_task"],
+                )
+                self.report("Undi calculation was successful.")
+
 
     @staticmethod
     def get_structures_group_from_findmuon(findmuon: FindMuonWorkChain):

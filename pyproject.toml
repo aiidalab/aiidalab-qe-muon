@@ -20,9 +20,8 @@ dependencies = [
     "aiida-core>=2.8,<3",
     "aiida-muon @ git+https://github.com/mikibonacci/aiida-muon.git@main",
     "pymatgen>=2023.9.25",
-    "aiida-workgraph @ git+https://github.com/aiidateam/aiida-workgraph.git",
     "aiida-pythonjob~=0.5.2",
-    "undi @ git+https://github.com/mikibonacci/undi.git@update",
+    "undi @ git+https://github.com/mikibonacci/undi.git@port-update-changes",
     "pybind11"
 ]
 
@@ -56,6 +55,9 @@ Source = "https://github.com/aiidalab/aiidalab-qe-muon"
 
 [project.entry-points.'aiida.workflows']
 "muon_app.implant_muon" = "aiidalab_qe_muon.workflows.implantmuonworkchain:ImplantMuonWorkChain"
+"muon_app.undi_multi_analysis" = "aiidalab_qe_muon.undi_interface.workflows.workchains:UndiMultiAnalysisWorkChain"
+"muon_app.undi_kubo_toyabe" = "aiidalab_qe_muon.undi_interface.workflows.workchains:UndiAndKuboToyabeWorkChain"
+"muon_app.multisites" = "aiidalab_qe_muon.undi_interface.workflows.workchains:MultiSitesWorkChain"
 
 [project.scripts]
 "aiidalab-qe-muon" = "aiidalab_qe_muon.__main__:cli"

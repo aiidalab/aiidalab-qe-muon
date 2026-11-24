@@ -16,7 +16,10 @@ from ase.build import make_supercell
 
 from aiida_muon.utils.sites_supercells import niche_add_impurities, gensup, compute_suggest_supercell_size, generate_supercell_with_impurities
 
-from undi.undi_analysis import check_enough_isotopes
+try:
+    from undi.auto_analysis import check_enough_isotopes
+except ImportError:  # older undi (``update`` branch): the module had another name
+    from undi.undi_analysis import check_enough_isotopes
 
 class MuonConfigurationSettingsModel(PanelModel, HasInputStructure):
     

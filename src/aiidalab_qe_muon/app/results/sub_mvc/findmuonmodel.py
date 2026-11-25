@@ -66,7 +66,8 @@ class FindMuonModel(Model):
     
     def fetch_data(self):
         """Fetch the findmuon data from the FindMuonWorkChain outputs."""
-        self.findmuon_data = export_findmuon_data(self.muon.findmuon)
+        # the deprecated columns (`muon_index`, `muon_index_global_unitcell`) are not needed here.
+        self.findmuon_data = export_findmuon_data(self.muon.findmuon, include_deprecated_columns=False)
         self.muon_index_list = self.findmuon_data["table"].index.tolist()
         self.selected_muons = self.muon_index_list[0:1]
         
@@ -110,9 +111,9 @@ class FindMuonModel(Model):
         
         This method is called by the controller to get the html table.
         """
-        excluded_columns = ["tot_energy","muon_index_global_unitcell","muon_index"]
+        excluded_columns = ["tot_energy","atom_index_in_unit_cell","supercell_index"]
         if self.advanced_table:
-            excluded_columns = ["muon_index"]
+            excluded_columns = ["supercell_index"]
             
         data = [[self.convert_label_to_html(entry) for entry in self.findmuon_data["table"].columns.to_list() if entry not in excluded_columns]]
         #data[-1].pop(-3)
@@ -144,8 +145,8 @@ class FindMuonModel(Model):
         """
         # prepare (all) the structures for download as ase atoms objects
         structures = {}
-        for index, label in zip(self.findmuon_data["table_all"]["muon_index"],self.findmuon_data["table_all"]["label"]):
-            node_id = self.findmuon_data["table_all"].loc[self.findmuon_data["table_all"]["muon_index"] == index, "structure_id_pk"].values[0]
+        # the index of the table is the supercell index of the site.
+        for node_id, label in zip(self.findmuon_data["table_all"]["structure_id_pk"],self.findmuon_data["table_all"]["label"]):
             structure = orm.load_node(node_id).get_ase()
             structures[label] = structure
         
@@ -164,7 +165,7 @@ class FindMuonModel(Model):
         import pandas as pd
         
         distortions_df = {}
-        for index, label in zip(self.findmuon_data["table_all"]["muon_index"],self.findmuon_data["table_all"]["label"]):
+        for index, label in zip(self.findmuon_data["table_all"]["supercell_index"],self.findmuon_data["table_all"]["label"]):
             distortion = {}
             distortion["atm_distance_init"] = []
             distortion["atm_distance_final"] = []
@@ -172,7 +173,7 @@ class FindMuonModel(Model):
             distortion["delta_distances"] = []
             distortion["element"] = []
             
-            for element,data in self.distortions[index].items():
+            for element,data in self.distortions[str(index)].items():  # the keys are the supercell indexes, as strings
                 for i in range(len(data["atm_distance_init"])):
                     distortion["atm_distance_init"].append(data["atm_distance_init"][i])
                     distortion["atm_distance_final"].append(data["atm_distance_final"][i])
@@ -218,8 +219,9 @@ class FindMuonModel(Model):
             os.mkdir(path)
             
             # Tables
-            files_dict["table"].drop(columns="muon_index").to_csv(path / "Summary_table.csv", index=True)
-            files_dict["table_all"].drop(columns="muon_index").to_csv(path / "Summary_table_before_clustering.csv", index=True)
+            # the first column is the supercell index (the index of the tables is named): do not repeat it.
+            files_dict["table"].drop(columns="supercell_index").to_csv(path / "Summary_table.csv", index=True)
+            files_dict["table_all"].drop(columns="supercell_index").to_csv(path / "Summary_table_before_clustering.csv", index=True)
             
             # Structures
             for label, structure in files_dict["structures"].items():

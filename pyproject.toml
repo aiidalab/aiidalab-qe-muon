@@ -18,7 +18,7 @@ keywords = ["aiidalab", "plugin","muon"]
 requires-python = ">=3.12"
 dependencies = [
     "aiida-core>=2.8,<3",
-    "aiida-muon @ git+https://github.com/mikibonacci/aiida-muon.git@main",
+    "aiida-muon @ git+https://github.com/mikibonacci/aiida-muon.git@new_deps",  # TODO: back to @main once new_deps is merged
     "pymatgen>=2023.9.25",
     "aiida-pythonjob~=0.5.2",
     "undi @ git+https://github.com/mikibonacci/undi.git@port-update-changes",

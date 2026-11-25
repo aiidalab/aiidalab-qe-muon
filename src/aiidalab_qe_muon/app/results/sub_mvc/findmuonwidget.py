@@ -275,7 +275,7 @@ class FindMuonWidget(ipw.VBox):
                 self.table.selected_rows = [0]
             
         self._model.selected_muons = [
-            int(self._model.findmuon_data["table"].iloc[index].muon_index) # because are stored as strings!
+            int(self._model.findmuon_data["table"].index[index]) # the index of the table is the supercell index
             for index in self.table.selected_rows
             ]
         
@@ -288,9 +288,14 @@ class FindMuonWidget(ipw.VBox):
 
     def _on_displayed_selection_change(self, change):
         if self.compare_muons_button.value:
+            # `displayed_selection` are the (0-based) indexes of atoms of `unit_cell`: see `atom_index_in_unit_cell`.
+            # (NOTE: this callback is not connected, see above.)
+            table = self._model.findmuon_data["table"]
             self._model.selected_muons = [
-                self._model.findmuon_data["table"][self._model.findmuon_data["table"].muon_index_global_unitcell == index].muon_index.values
-                for index in self.structure_view_container.children[0].displayed_selection
+                int(supercell_index)
+                for supercell_index in table.index[
+                    table.atom_index_in_unit_cell.isin(self.structure_view_container.children[0].displayed_selection)
+                ]
                 ]
         
     def _compare_mode(self, _=None):
@@ -307,8 +312,9 @@ class FindMuonWidget(ipw.VBox):
     
     def _update_picked_atoms(self, _=None):
         if self.compare_muons_button.value:
+            # the (0-based) indexes of the muons in `unit_cell`, which is the displayed structure in this mode.
             selected_muons = [
-                self._model.findmuon_data["table"].loc[index_selected].muon_index_global_unitcell - 1
+                int(self._model.findmuon_data["table"].loc[index_selected].atom_index_in_unit_cell)
                 for index_selected in self._model.selected_muons
                 ]
             self.structure_view_container.children[0].displayed_selection = selected_muons

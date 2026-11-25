@@ -10,7 +10,7 @@ dictionary_of_names_for_html = {
     "B_T_norm": "|B<sub>total</sub>| (T)",
     "Bdip_norm": "|B<sub>dip</sub>| (T)",
     "B_hf_norm": "|B<sub>hf</sub>| (T)",
-    "muon_index_global_unitcell": "μ<sub>index</sub>",
+    "atom_index_in_unit_cell": "Muon atom index (unit cell)",
 }
 
 no_Bfield_sentence = """

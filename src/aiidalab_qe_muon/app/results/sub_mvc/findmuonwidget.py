@@ -286,16 +286,27 @@ class FindMuonWidget(ipw.VBox):
         
         self._on_selected_muons_change()
 
+    # `atom_index_in_unit_cell` (table) is 1-based, the structure viewer (as ASE) is 0-based: convert only here.
+    @staticmethod
+    def _to_viewer_index(atom_index_in_unit_cell):
+        return int(atom_index_in_unit_cell) - 1
+
+    @staticmethod
+    def _from_viewer_index(viewer_index):
+        return int(viewer_index) + 1
+
     def _on_displayed_selection_change(self, change):
         if self.compare_muons_button.value:
-            # `displayed_selection` are the (0-based) indexes of atoms of `unit_cell`: see `atom_index_in_unit_cell`.
-            # (NOTE: this callback is not connected, see above.)
+            # `displayed_selection` are the (0-based) indexes of atoms of `unit_cell`: the column
+            # `atom_index_in_unit_cell` is 1-based. (NOTE: this callback is not connected, see above.)
             table = self._model.findmuon_data["table"]
+            displayed = [
+                self._from_viewer_index(i)
+                for i in self.structure_view_container.children[0].displayed_selection
+            ]
             self._model.selected_muons = [
                 int(supercell_index)
-                for supercell_index in table.index[
-                    table.atom_index_in_unit_cell.isin(self.structure_view_container.children[0].displayed_selection)
-                ]
+                for supercell_index in table.index[table.atom_index_in_unit_cell.isin(displayed)]
                 ]
         
     def _compare_mode(self, _=None):
@@ -312,9 +323,9 @@ class FindMuonWidget(ipw.VBox):
     
     def _update_picked_atoms(self, _=None):
         if self.compare_muons_button.value:
-            # the (0-based) indexes of the muons in `unit_cell`, which is the displayed structure in this mode.
+            # the (0-based) indexes in the viewer of the muons in `unit_cell`, the displayed structure in this mode.
             selected_muons = [
-                int(self._model.findmuon_data["table"].loc[index_selected].atom_index_in_unit_cell)
+                self._to_viewer_index(self._model.findmuon_data["table"].loc[index_selected].atom_index_in_unit_cell)
                 for index_selected in self._model.selected_muons
                 ]
             self.structure_view_container.children[0].displayed_selection = selected_muons

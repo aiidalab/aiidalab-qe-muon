@@ -1,7 +1,7 @@
 """Tests of how the app shows and exports the identifiers of the muon sites.
 
 A site is identified by its `supercell_index` (the index of the tables, and the first column of the csv files) and by
-its `atom_index_in_unit_cell` (the 0-based index of its muon in the unit cell with all the sites): see
+its `atom_index_in_unit_cell` (the 1-based number of its muon in the unit cell with all the sites): see
 `aiida_muon.utils.export_findmuon.produce_muonic_dataframe`.
 """
 
@@ -75,7 +75,7 @@ def make_table(index=(3, 0)):
             "delta_E": [0, 5],
             "tot_energy": [-100.0, -95.0],
             "muon_position_cc": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
-            "atom_index_in_unit_cell": [8, 9],
+            "atom_index_in_unit_cell": [9, 10],
             "supercell_index": list(index),
         },
         index=index,
@@ -126,7 +126,7 @@ def test_csv_files_first_column_is_the_supercell_index(model):
             assert "supercell_index" not in header[1:]  # not repeated
             assert "atom_index_in_unit_cell" in header
             assert [row[0] for row in rows[1:]] == ["3", "0"]
-            assert [row[header.index("atom_index_in_unit_cell")] for row in rows[1:]] == ["8", "9"]
+            assert [row[header.index("atom_index_in_unit_cell")] for row in rows[1:]] == ["9", "10"]
         assert "README.txt" in " ".join(archive.namelist())
 
 
@@ -150,6 +150,9 @@ def test_legend_renders(download_mode, advanced_table, B_fields):
         assert ("B_hf_norm" in text) is B_fields
         # the thresholds of the clustering are those of `aiida_muon.utils.clustering` (0.5 Angstrom, 0.05 eV)
         assert "0.5 Angstrom" in text and "0.05 eV" in text and "10^-3" not in text
+        # the atom index is 1-based, and the README says it and asks to check the visualizer
+        assert "1-based" in text and "Please check that your visualizer is 1-based" in text
+        assert "starts from 0" in text and "0-based" not in text.replace("ASE and Python are 0-based", "")
     else:
         assert (dictionary_of_names_for_html["atom_index_in_unit_cell"] in text) is advanced_table
 

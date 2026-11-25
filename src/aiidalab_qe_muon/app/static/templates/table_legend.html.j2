@@ -18,7 +18,7 @@
             <li>{{ data["B_hf_norm"] if not download_mode else "B_hf_norm" }}: the norm of the hyperfine magnetic field.</li>
             {% endif %}
             {% if advanced_table %}
-            <li>{{ data["atom_index_in_unit_cell"] if not download_mode else "atom_index_in_unit_cell" }}: the index of the muon atom in the unit cell shown in the "Compare muon sites mode" (see below). It starts from 0, as in ASE - only shown in the advanced mode.</li>
+            <li>{{ data["atom_index_in_unit_cell"] if not download_mode else "atom_index_in_unit_cell" }}: the number of the muon atom in the unit cell shown in the "Compare muon sites mode" (see below). It starts from 1 (the first atom is 1), unlike the supercell_index and unlike ASE/Python (subtract 1 there) - only shown in the advanced mode.</li>
             {% endif %}
         </ul>
         {% if advanced_table and not download_mode %}
@@ -42,7 +42,7 @@ The downloaded files are organized in the following way:
 ## About the summary tables:
 
 The table collects the results of the muon resting sites search. Each row is a muon site. The different columns show:
-- "supercell_index" (first column): the id of the relaxation, i.e. of the supercell, of the muon site. It is NOT the position of the site in the table, and it is unrelated to the "label" and to the energy order.
+- "supercell_index" (first column): the id of the relaxation, i.e. of the supercell, of the muon site. It starts from 0. It is NOT the position of the site in the table, and it is unrelated to the "label" and to the energy order.
 - "structure_id_pk": the AiiDA id (or pk) of the relaxed supercell structure in the database.
 - "label": a label for the given site, and for its supercell file (Supercell_#.cif): a letter, in order of increasing energy (A is the lowest energy site).
 - "delta_E": the total energy difference with respect to the lowest energy (meV).
@@ -55,7 +55,7 @@ The table collects the results of the muon resting sites search. Each row is a m
 - "Bdip_norm": the norm of the dipolar magnetic field.
 - "B_hf_norm": the norm of the hyperfine magnetic field.
 {% endif %}
-- "atom_index_in_unit_cell": the index of the muon atom in the unit cell with all the muon sites, i.e. in the file Allsites_unitcell.cif for Summary_table.csv and in the file Allsites_before_clustering_unitcell.cif for Summary_table_before_clustering.csv. It starts from 0 (as in ASE): the first atom of the cif file has index 0.
+- "atom_index_in_unit_cell": the number of the muon atom in the unit cell with all the muon sites, i.e. in the file Allsites_unitcell.cif for Summary_table.csv and in the file Allsites_before_clustering_unitcell.cif for Summary_table_before_clustering.csv. It is 1-based: the first atom of the cif file is atom 1. Please check that your visualizer is 1-based. ASE and Python are 0-based, so there use "atom_index_in_unit_cell" minus 1. Note that "supercell_index", instead, starts from 0.
 
 In the "Summary_table_before_clustering.csv" table there will be also the information about the clustering: the last column, called "cluster group", is a number (starting from 1) that identifies the group to which the muon site belongs: the sites with the same number belong to the same group. The sites of the table "Summary_table.csv" are the representative sites of the groups.
 

@@ -49,9 +49,13 @@ class ImportMagnetism(StructureUploadWidget):
     ):
         super().__init__()
         self.title = title
-        self.message = ipw.HTML("Please note: the magnetic momenta of the uploaded mcif will \
-                            be used only for muon simulations (no need to set additional magnetization in the advanced settings). \
-                            It is possible to overwrite the values in the advanced settings (you need to edit the tags in the Edit structure panel).")
+        self.message = ipw.HTML(
+            "<b>Please note:</b> the magnetic moments of the uploaded mcif are kept with the structure and "
+            "are used in the muon simulations, after being made collinear "
+            "(the <i>Muon settings</i> panel of step 2 shows both the mcif and the collinear moments).<br>"
+            "<b>They will be overridden</b> if you set the magnetism in step 2, i.e. the "
+            "<i>Initial magnetic moments</i> in the <i>Magnetism</i> tab of the <i>Advanced settings</i>."
+        )
         self.file_upload_subwidget1 = ipw.Checkbox(
             description="Use conventional (select before the upload)",
             indent=False,
@@ -88,7 +92,7 @@ class ImportMagnetism(StructureUploadWidget):
             temp_file.write(content)
             temp_file.flush()
             try:
-                structures = get_pymatgen_from_file(temp_file.name,primitive=not self.file_upload_subwidget1)
+                structures = get_pymatgen_from_file(temp_file.name,primitive=not self.file_upload_subwidget1.value)
             except KeyError:
                 self._status_message.message = f"""
                     <div class="alert alert-danger">ERROR: Could not parse file {fname}</div>

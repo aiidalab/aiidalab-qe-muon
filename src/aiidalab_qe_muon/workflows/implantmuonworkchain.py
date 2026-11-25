@@ -120,7 +120,7 @@ class ImplantMuonWorkChain(WorkChain):
             valid_type=bool,
             default=True,
             non_db=True,
-            help="Attach aiida-monitor to every PwBaseWorkChain relaxation step when aiida-monitor is installed.",
+            help="Attach the `quantumespresso.accuracy_stuck` monitor (from aiida-quantumespresso) to every PwBaseWorkChain relaxation step.",
         )
         spec.input(
             "kind_names",

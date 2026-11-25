@@ -13,6 +13,7 @@ from aiidalab_qe.common.widgets import LoadingWidget
 from aiidalab_qe.common.infobox import InAppGuide
 
 from aiidalab_qe_muon.app.results.sub_mvc.undimodel import PolarizationModel
+from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity
 
 class UndiPlotWidget(ipw.VBox):
     """_summary_
@@ -162,7 +163,7 @@ class UndiPlotWidget(ipw.VBox):
                 options=[
                     ("P(t)", "P"),
                     ("ΔP(t) = P(t) - Pᵣ(t)", "deltaP"),
-                    ("100*ΔP(t)/Pᵣ(t)", "deltaP_rel"),
+                    ("100·ΔP(t)/Pᵣ(t) (%)", "deltaP_rel"),
                 ],
                 value="P",
             )
@@ -238,14 +239,10 @@ class UndiPlotWidget(ipw.VBox):
                     ydata = np.array(
                         self._model.muons[str(muon_index)].data["y"][field_direction][index][f"signal_{direction}"]
                     )
-                    ylabel = "P(t)"
-                    if "delta" in to_be_plotted:
-                        ydata = ydata_highest - ydata
-                        ylabel = "ΔP(t)"
-                    if "rel" in to_be_plotted:
-                        ydata /= 100 * ydata_highest
-                        ylabel = "Δ<sub>%</sub>P(t)"
-                    title = None  # "$$\Delta P(t) = P_{max\_hdim=10^9}(t) - P(t)$$"
+                    # ΔP = P - P_r, with P_r computed with the largest max_hdim (see the toggle button labels)
+                    ydata = convergence_quantity(ydata, ydata_highest, to_be_plotted)
+                    ylabel = CONVERGENCE_QUANTITIES[to_be_plotted]
+                    title = None
 
                 self.fig.add_trace(
                     go.Scatter(

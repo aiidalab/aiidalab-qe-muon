@@ -46,6 +46,53 @@ class MuonConfigurationSettingPanel(
             "structure_uuid",
         )
         
+    @staticmethod
+    def _html_table(headers, rows):
+        cell = "<td style='padding:1px 8px;'>{}</td>"
+        head = "".join(f"<th style='padding:1px 8px;'>{h}</th>" for h in headers)
+        body = "".join("<tr>" + "".join(cell.format(c) for c in row) + "</tr>" for row in rows)
+        return f"<table style='font-size:0.85em;border-collapse:collapse;'><tr>{head}</tr>{body}</table>"
+
+    def _update_magmoms_display(self, _=None):
+        """Fill the tables of the magnetic moments and show them only when the structure has any."""
+        model = self._model
+        self.magmoms_box.layout.display = "block" if model.has_magmoms else "none"
+        mcif, collinear = self.magmoms_tabs.children
+
+        sites = model.input_structure.sites if model.input_structure else []
+        mcif.value = self._html_table(
+            ["Site", "Kind", "mx (μ<sub>B</sub>)", "my", "mz"],
+            [
+                [i, sites[i].kind_name if i < len(sites) else ""] + [f"{x:.3f}" for x in m]
+                for i, m in enumerate(model.magmoms)
+            ],
+        )
+
+        if model.magmoms_collinear_error:
+            collinear.value = (
+                "<span style='color:grey;font-style:italic;'>The collinear moments could not be computed "
+                f"({model.magmoms_collinear_error}).</span>"
+            )
+        else:
+            collinear.value = (
+                "<span style='color:grey;font-size:0.85em;'>As computed by <code>aiida-muon</code> for the workflow: "
+                "the moments are made collinear along z, and the kinds are split by element and spin. "
+                "The starting magnetization is the value given to Quantum ESPRESSO.</span><br>"
+                + self._html_table(
+                    ["Site", "Element", "Kind", "mz (μ<sub>B</sub>)", "Starting magnetization"],
+                    [
+                        [
+                            row["site"],
+                            row["element"],
+                            row["kind"],
+                            f"{row['magmom'][2]:.3f}",
+                            f"{row['start_mag']:+.1f}",
+                        ]
+                        for row in model.magmoms_collinear
+                    ],
+                )
+            )
+
     def render(self):
         if self.rendered:
             return
@@ -105,7 +152,7 @@ class MuonConfigurationSettingPanel(
         self.compute_findmuon.observe(self._on_compute_findmuon_change, "value")
         
         self.compute_polarization_undi = ipw.Checkbox(
-            description="""Compute polarization (only &mu;-nuclei interactions) """,
+            description="""Compute polarization (only μ-nuclei interactions) """,
             indent=False,
             value=self._model.compute_polarization_undi,
             tooltip="Compute the compute polarization for muon resting site(s).",
@@ -152,7 +199,7 @@ class MuonConfigurationSettingPanel(
                 """,
         )
         self.use_defaults = ipw.Checkbox(
-            description="Use default  DFT+&mu; settings",
+            description="Use default DFT+μ settings",
             indent=False,
             value=True,
             tooltip="Use the default settings for the workflow.",
@@ -216,37 +263,21 @@ class MuonConfigurationSettingPanel(
         #     info="""&#8613; Non-collinear magnetic calculation<br>Enable non-collinear spin treatment.
         #         """,
         # )
-        def _format_magmoms(magmoms):
-            if not magmoms:
-                return (
-                    "<span style='color:grey;font-style:italic;'>No magnetic moments found in structure extras.</span>"
-                )
-            sites = self._model.input_structure.sites if self._model.input_structure else []
-            rows = "".join(
-                "<tr><td style='padding:1px 6px;'>{}</td><td style='padding:1px 6px;'>{}</td>"
-                "<td style='padding:1px 6px;'>{:.3f}</td><td style='padding:1px 6px;'>{:.3f}</td><td style='padding:1px 6px;'>{:.3f}</td></tr>".format(
-                    i, sites[i].kind_name if i < len(sites) else "",
-                    m[0], m[1], m[2],
-                )
-                for i, m in enumerate(magmoms)
-            )
-            return (
-                "<b>Magnetic moments from structure (e.g. mcif):</b> "
-                "<span style='color:grey;font-size:0.85em;'>These can be overridden via <i>Initial magnetic moments</i> "
-                "in the <b>Magnetism</b> tab of the Advanced settings panel.</span><br>"
-                "<table style='font-size:0.85em;border-collapse:collapse;'>"
-                "<tr><th style='padding:1px 6px;'>Site</th><th>Kind</th>"
-                "<th>mx (μ<sub>B</sub>)</th><th>my</th><th>mz</th></tr>"
-                + rows
-                + "</table>"
-            )
-
-        self.magmoms_display = ipw.HTML(value=_format_magmoms(self._model.magmoms))
-        ipw.dlink(
-            (self._model, "magmoms"),
-            (self.magmoms_display, "value"),
-            _format_magmoms,
+        self.magmoms_warning = ipw.HTML(
+            """<div class="alert alert-warning" style="margin: 5px 0;">
+            <b>Warning:</b> the structure carries magnetic moments (e.g. from an mcif). They are used in the muon simulations,
+            after being made collinear (see the tables below). <b>They are overridden</b> if you set the
+            <i>Initial magnetic moments</i> in the <i>Magnetism</i> tab of the <i>Advanced settings</i>.
+            </div>"""
         )
+        self.magmoms_tabs = ipw.Tab(
+            children=[ipw.HTML(), ipw.HTML()],
+            titles=["mcif moments", "Collinearized"],
+        )
+        self.magmoms_box = ipw.VBox([self.magmoms_warning, self.magmoms_tabs])
+        self._update_magmoms_display()
+        for trait in ("magmoms", "magmoms_collinear", "magmoms_collinear_error", "has_magmoms"):
+            self._model.observe(self._update_magmoms_display, trait)
 
         # TODO: noncollinear feature is not yet fully understood – restore when ready
         # self.noncollinear_box = ipw.VBox([
@@ -285,16 +316,17 @@ class MuonConfigurationSettingPanel(
             description="Activate monitors",
             indent=False,
             value=self._model.activate_monitors,
-            tooltip="Attach aiida-monitor to every PwBaseWorkChain relaxation step (requires aiida-monitor to be installed).",
+            tooltip="Attach the quantumespresso.accuracy_stuck monitor (from aiida-quantumespresso) to every PwBaseWorkChain relaxation step.",
         )
         ipw.link(
             (self.activate_monitors, "value"),
             (self._model, "activate_monitors"),
         )
         self.activate_monitors_help = SettingsInfoBoxWidget(
-            info="""&#8613; Activate monitors<br>When enabled and <code>aiida-monitor</code> is installed, the
-            <code>aiida_monitor.default_monitor</code> is automatically attached to every relaxation step.
-            Disable this if the entry point is not available in your environment.
+            info="""&#8613; Activate monitors<br>When enabled, the <code>quantumespresso.accuracy_stuck</code> monitor, provided by
+            <code>aiida-quantumespresso</code> (already installed with the app, nothing else is needed), is automatically attached to every
+            relaxation step: it stops a <code>pw.x</code> run whose SCF accuracy has stopped improving, so that the work chain can
+            handle it instead of wasting the whole wall time.
                 """,
         )
         self.activate_monitors_box = ipw.VBox([
@@ -646,7 +678,7 @@ class MuonConfigurationSettingPanel(
             ),
             self.use_defaults_box,
             self.compute_gamma_pre_relax_box,
-            self.magmoms_display,
+            self.magmoms_box,
             # self.noncollinear_box,  # TODO: noncollinear not yet ready
             self.pre_clustering_box,
             self.activate_monitors_box,

@@ -108,7 +108,7 @@ class MuonConfigurationSettingPanel(
             Computing only the polarization requires the muon (H atom) already placed in the structure as last site. 
             Supercell size and muon stopping sites are computed by means of the <b><a href="https://positivemuon.github.io/aiida-muon/"
             target="_blank">aiida-muon</b></a> plugin (<a href="https://doi.org/10.1039/D4DD00314D"
-            target="_blank">Onuorah et al., Digital Discovery, 2025</a>). The polarization is computed via the <b><a href="https://undi.readthedocs.io/en/latest/index.html"
+            target="_blank">Onuorah, Bonacci et al., Digital Discovery, 2025</a>). The polarization is computed via the <b><a href="https://undi.readthedocs.io/en/latest/index.html"
             target="_blank">UNDI</b></a> package (<a href="https://doi.org/10.1016/j.cpc.2020.107719"
             target="_blank">Bonfà et al., Comput. Phys. Commun. 260, 107719, 2021</a>), using the method by Celio
             (<a href="https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.56.2720"target="_blank">Celio, Phys. Rev. Lett. 56, 2720, 1986</a>), and considering only the muon-nuclear interactions.

@@ -18,7 +18,7 @@
             <li>{{ data["B_hf_norm"] if not download_mode else "B_hf_norm" }}: the norm of the hyperfine magnetic field.</li>
             {% endif %}
             {% if advanced_table %}
-            <li>{{ data["atom_index_in_unit_cell"] if not download_mode else "atom_index_in_unit_cell" }}: the number of the muon atom in the unit cell shown in the "Compare muon sites mode" (see below). It starts from 1 (the first atom is 1), unlike the supercell_index and unlike ASE/Python (subtract 1 there) - only shown in the advanced mode.</li>
+            <li>{{ data["atom_index_in_unit_cell"] if not download_mode else "atom_index_in_unit_cell" }}: the number of the muon atom in the cell with all the muon sites, i.e. the one shown in the "Compare muon sites mode" (see below). It is 1-based: the first atom is 1 (in ASE/Python, subtract 1) - only shown in the advanced mode.</li>
             {% endif %}
         </ul>
         {% if advanced_table and not download_mode %}

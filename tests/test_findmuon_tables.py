@@ -97,6 +97,8 @@ def test_table_columns_shown(model, advanced):
     assert dictionary_of_names_for_html["label"] in header
     # the supercell index is not shown (it is the index of the table); the atom index only in the advanced mode.
     assert (dictionary_of_names_for_html["atom_index_in_unit_cell"] in header) is advanced
+    # the label of the atom index says that it is 1-based
+    assert "1-based" in dictionary_of_names_for_html["atom_index_in_unit_cell"]
     assert (dictionary_of_names_for_html["tot_energy"] in header) is advanced
     assert len(model.table_data) == 1 + len(model.findmuon_data["table"])
     assert all(len(row) == len(header) for row in model.table_data[1:])

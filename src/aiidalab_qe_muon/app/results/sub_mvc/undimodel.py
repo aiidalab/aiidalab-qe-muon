@@ -48,6 +48,7 @@ class PolarizationModel(Model):
         value=[1e5],
     )
     plotting_quantity = tl.Unicode("P")  # for the convergence analysis
+    production_max_hdim = tl.Int(allow_none=True, default_value=None)  # max_hdim of the 'undi_runs' (production)
     selected_fields = tl.List(
         trait=tl.Float(),
         value=[0.0],
@@ -191,6 +192,13 @@ class PolarizationModel(Model):
                 self.muons[muon_index] = AttributeDict()
                 
                 main_node = muon
+
+                # the max_hdim of the production runs, read from the data: it can differ between calculations.
+                production = [
+                    int(job.inputs.function_inputs.max_hdim.value)
+                    for job in main_node.base.links.get_outgoing().get_node_by_label("undi_runs").called
+                ]
+                self.production_max_hdim = max(production) if production else None
 
                 search = "undi_runs"
                 if self.mode == "analysis":

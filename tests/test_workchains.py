@@ -5,6 +5,7 @@ that returns the same outputs, so that the provenance (call link labels, inputs,
 """
 
 import pytest
+from _stubs import fake_modules
 from aiida import orm
 from aiida.common.links import LinkType
 from aiida.engine import WorkChain, run_get_node
@@ -91,11 +92,16 @@ def test_specs():
     assert {"structure", "code", "B_mods", "max_hdims", "convergence_check", "task_metadata"} <= set(undi.inputs)
     assert "results" in undi.outputs
 
+    # only the chains that run the production have `max_hdim`, the other one runs what it is given
+    assert "max_hdim" not in undi.inputs
+
     kt = UndiAndKuboToyabeWorkChain.spec()
     assert set(kt.outputs["results"]) == {"KT_task", "undi_conv_task", "undi_task"}
+    assert "max_hdim" in kt.inputs
 
     sites = MultiSitesWorkChain.spec()
     assert sites.inputs["structure_group"].dynamic
+    assert "max_hdim" in sites.inputs
     assert "results" in sites.outputs
 
 
@@ -125,15 +131,48 @@ def test_undi_and_kubo_toyabe(fake_pythonjob, code, structure):
         code=code,
         B_mods=orm.List([0.0, 1e-3]),
         max_hdims=orm.List([4, 16, 64]),
+        max_hdim=orm.Int(16),
         convergence_check=orm.Bool(True),
     )
     assert node.is_finished_ok
     assert labels_of(node) == ["KuboToyabe_run", "convergence_check", "undi_runs"]
     assert isinstance(results["results"]["KT_task"], orm.Dict)
-    # convergence check: B=0, every max_hdim. undi_runs: every field, the second-to-last max_hdim only.
+    # convergence check: B=0, every max_hdim. undi_runs: every field, the production max_hdim only.
     assert sorted(results["results"]["undi_conv_task"]) == ["iter_0", "iter_1", "iter_2"]
     assert sorted(results["results"]["undi_task"]) == ["iter_0", "iter_1"]
     assert [r["max_hdim"] for r in results["results"]["undi_task"]["iter_0"].get_list()] == [16.0]
+
+
+def test_default_sizes(fake_pythonjob, code, structure):
+    """Convergence check with 10^2, 10^4 and 10^6, production runs with 10^6 (not tied to the list)."""
+    results, node = run_get_node(
+        UndiAndKuboToyabeWorkChain,
+        structure=structure,
+        code=code,
+        B_mods=orm.List([0.0, 1e-3]),
+        convergence_check=orm.Bool(True),
+    )
+    assert node.is_finished_ok
+    jobs = {
+        link.link_label: {job.link_label: job.node for job in link.node.base.links.get_outgoing(link_type=LinkType.CALL_WORK).all()}
+        for link in node.base.links.get_outgoing(link_type=LinkType.CALL_WORK).all()
+        if link.link_label in ("convergence_check", "undi_runs")
+    }
+    sizes = lambda label: [  # noqa: E731
+        job.inputs.function_inputs.max_hdim.value for _, job in sorted(jobs[label].items())
+    ]
+    assert sizes("convergence_check") == [10**2, 10**4, 10**6]
+    assert sizes("undi_runs") == [10**6, 10**6]  # one per field
+
+    # the production size is its own input: it does not have to be in the list
+    results, node = run_get_node(
+        UndiAndKuboToyabeWorkChain,
+        structure=structure,
+        code=code,
+        max_hdims=orm.List([4, 16]),
+        max_hdim=orm.Int(32),
+    )
+    assert [r["max_hdim"] for r in results["results"]["undi_task"]["iter_0"].get_list()] == [32.0]
 
 
 def test_undi_and_kubo_toyabe_without_convergence_check(fake_pythonjob, code, structure):
@@ -198,8 +237,9 @@ def test_failed_child_fails_everything(fake_pythonjob, code, structure):
     assert "results" not in node.outputs
 
 
-def test_implant_muon_polarization_only(fake_pythonjob, code):
+def test_implant_muon_polarization_only(fake_pythonjob, code, monkeypatch):
     """`ImplantMuonWorkChain` without the muon search: it submits the `MultiSitesWorkChain` and returns the first KT."""
+    fake_modules(monkeypatch, "pylocfield", "pylocfield.ewald", "pylocfield.realspace")  # imported by `aiida-muon`, not used here
     module = pytest.importorskip("aiidalab_qe_muon.workflows.implantmuonworkchain")
     structure = orm.StructureData(cell=[[3, 0, 0], [0, 3, 0], [0, 0, 3]])
     structure.append_atom(position=(0, 0, 0), symbols="Cu")
@@ -216,11 +256,13 @@ def test_implant_muon_polarization_only(fake_pythonjob, code):
         undi_metadata={"options": {"resources": {"num_machines": 1}}},
         undi_fields=orm.List([0.0, 1e-3]),
         undi_max_hdims=orm.List([4, 16]),
+        undi_max_hdim=orm.Int(16),
     )
     assert node.is_finished_ok
     assert labels_of(node) == ["MultiSiteUndiPolarizationAndKT"]
     multisites = node.called[0]
     assert multisites.process_label == "MultiSitesWorkChain"
+    assert multisites.inputs.max_hdim.value == 16  # forwarded from `undi_max_hdim`
     assert labels_of(multisites) == ["polarization_structure_0"]
     assert isinstance(results["polarization"], orm.Dict)
     assert results["polarization"].pk == multisites.outputs.results["site_0"]["KT_task"].pk

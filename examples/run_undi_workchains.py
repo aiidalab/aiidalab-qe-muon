@@ -17,6 +17,7 @@ import argparse
 
 from _common import (
     DEFAULT_FIELDS_MT,
+    DEFAULT_MAX_HDIM,
     DEFAULT_MAX_HDIMS,
     PYTHONJOB_CODE,
     cu_h_structure,
@@ -45,8 +46,15 @@ def parse_args(argv=None):
         type=float,
         nargs="+",
         default=DEFAULT_MAX_HDIMS,
-        help="maximum Hilbert-space dimensions; kubo-toyabe and multisites need at least two, as their UNDI "
-        "runs use the second-to-last (default: %(default)s)",
+        help="maximum Hilbert-space dimensions of the convergence check, at zero field; the largest is the "
+        "reference (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--max-hdim",
+        type=int,
+        default=DEFAULT_MAX_HDIM,
+        help="maximum Hilbert-space dimension of the production runs, at every field; not used by "
+        "`analysis` (default: %(default)s)",
     )
     parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per PythonJob (default: %(default)s)")
     parser.add_argument("--submit", action="store_true", help="submit to the daemon instead of running here")
@@ -54,8 +62,6 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.show is None and args.chain is None:
         parser.error("choose a work chain, or use --show PK")
-    if args.chain != "analysis" and len(args.max_hdims) < 2:
-        parser.error("--max-hdims needs at least two values (the UNDI runs use the second-to-last one)")
     return args
 
 
@@ -79,6 +85,8 @@ def build_inputs(args, code):
         inputs["structure"] = cu_h_structure("octahedral")
         if args.chain == "kubo-toyabe":
             inputs["convergence_check"] = orm.Bool(True)
+    if args.chain != "analysis":
+        inputs["max_hdim"] = orm.Int(args.max_hdim)
     return inputs
 
 

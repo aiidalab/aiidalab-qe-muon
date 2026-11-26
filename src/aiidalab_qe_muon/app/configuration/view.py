@@ -46,52 +46,19 @@ class MuonConfigurationSettingPanel(
             "structure_uuid",
         )
         
-    @staticmethod
-    def _html_table(headers, rows):
-        cell = "<td style='padding:1px 8px;'>{}</td>"
-        head = "".join(f"<th style='padding:1px 8px;'>{h}</th>" for h in headers)
-        body = "".join("<tr>" + "".join(cell.format(c) for c in row) + "</tr>" for row in rows)
-        return f"<table style='font-size:0.85em;border-collapse:collapse;'><tr>{head}</tr>{body}</table>"
-
     def _update_magmoms_display(self, _=None):
-        """Fill the tables of the magnetic moments and show them only when the structure has any."""
+        """Fill the table of the magnetic moments, shown only when the structure has any."""
+        from aiidalab_qe_muon.utils.magnetism import magmoms_table_html
+
         model = self._model
         self.magmoms_box.layout.display = "block" if model.has_magmoms else "none"
-        mcif, collinear = self.magmoms_tabs.children
-
         sites = model.input_structure.sites if model.input_structure else []
-        mcif.value = self._html_table(
-            ["Site", "Kind", "mx (μ<sub>B</sub>)", "my", "mz"],
-            [
-                [i, sites[i].kind_name if i < len(sites) else ""] + [f"{x:.3f}" for x in m]
-                for i, m in enumerate(model.magmoms)
-            ],
+        self.magmoms_table.value = magmoms_table_html(
+            [site.kind_name for site in sites],
+            model.magmoms,
+            model.magmoms_collinear,
+            model.magmoms_collinear_error,
         )
-
-        if model.magmoms_collinear_error:
-            collinear.value = (
-                "<span style='color:grey;font-style:italic;'>The collinear moments could not be computed "
-                f"({model.magmoms_collinear_error}).</span>"
-            )
-        else:
-            collinear.value = (
-                "<span style='color:grey;font-size:0.85em;'>As computed by <code>aiida-muon</code> for the workflow: "
-                "the moments are made collinear along z, and the kinds are split by element and spin. "
-                "The starting magnetization is the value given to Quantum ESPRESSO.</span><br>"
-                + self._html_table(
-                    ["Site", "Element", "Kind", "mz (μ<sub>B</sub>)", "Starting magnetization"],
-                    [
-                        [
-                            row["site"],
-                            row["element"],
-                            row["kind"],
-                            f"{row['magmom'][2]:.3f}",
-                            f"{row['start_mag']:+.1f}",
-                        ]
-                        for row in model.magmoms_collinear
-                    ],
-                )
-            )
 
     def render(self):
         if self.rendered:
@@ -266,15 +233,12 @@ class MuonConfigurationSettingPanel(
         self.magmoms_warning = ipw.HTML(
             """<div class="alert alert-warning" style="margin: 5px 0;">
             <b>Warning:</b> the structure carries magnetic moments (e.g. from an mcif). They are used in the muon simulations,
-            after being made collinear (see the tables below). <b>They are overridden</b> if you set the
+            after being made collinear (see the table below). <b>They are overridden</b> if you set the
             <i>Initial magnetic moments</i> in the <i>Magnetism</i> tab of the <i>Advanced settings</i>.
             </div>"""
         )
-        self.magmoms_tabs = ipw.Tab(
-            children=[ipw.HTML(), ipw.HTML()],
-            titles=["mcif moments", "Collinearized"],
-        )
-        self.magmoms_box = ipw.VBox([self.magmoms_warning, self.magmoms_tabs])
+        self.magmoms_table = ipw.HTML()
+        self.magmoms_box = ipw.VBox([self.magmoms_warning, self.magmoms_table])
         self._update_magmoms_display()
         for trait in ("magmoms", "magmoms_collinear", "magmoms_collinear_error", "has_magmoms"):
             self._model.observe(self._update_magmoms_display, trait)

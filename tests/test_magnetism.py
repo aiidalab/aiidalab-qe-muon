@@ -1,9 +1,18 @@
 """Tests of the collinearization of the magnetic moments shown in the muon settings (no app needed)."""
 
+import re
+
 import pytest
+from _stubs import fake_modules
 from aiida import orm
 
-from aiidalab_qe_muon.utils.magnetism import collinearize_magmoms
+from aiidalab_qe_muon.utils.magnetism import collinearize_magmoms, magmoms_table_html
+
+
+@pytest.fixture(autouse=True)
+def _pylocfield(monkeypatch):
+    """`aiida-muon` imports `pylocfield` (dipolar fields), which these tests do not use: stand in for it if missing."""
+    fake_modules(monkeypatch, "pylocfield", "pylocfield.ewald", "pylocfield.realspace")
 
 
 @pytest.fixture
@@ -72,3 +81,41 @@ def test_helper_does_not_create_provenance(mno_like):
     collinearize_magmoms(mno_like, [[0, 0, 4.5], [0, 0, -4.5], [0, 0, 0], [0, 0, 0]])
     assert orm.QueryBuilder().append(orm.CalcFunctionNode).count() == before
     assert not mno_like.is_stored
+
+
+# ---- the table shown in the settings panel
+
+ROWS = [
+    {"site": 0, "element": "Mn", "kind": "Mn1", "magmom": [0.0, 0.0, 4.5], "start_mag": 0.5},
+    {"site": 1, "element": "Mn", "kind": "Mn2", "magmom": [0.0, 0.0, -4.5], "start_mag": -0.5},
+]
+
+
+def _cells(html, tag):
+    return [re.sub(r"<[^>]+>", "", c) for c in re.findall(rf"<{tag}[^>]*>(.*?)</{tag}>", html)]
+
+
+def test_table_has_one_row_per_site_with_the_collinear_columns_last():
+    html = magmoms_table_html(["Mn", "Mn"], [[0, 0, 4.5], [0, 0, -4.5]], ROWS)
+    # one table, the new kind before the collinear moment and the starting magnetization
+    assert html.count("<table") == 1
+    assert _cells(html, "th")[2:] == [
+        "Site", "Kind", "mx (μB)", "my", "mz", "New kind", "mz (μB)", "Starting magnetization"
+    ]
+    rows = [_cells(row, "td") for row in re.findall(r"<tr>(?:<td.*?</td>)+</tr>", html)]
+    assert rows == [
+        ["0", "Mn", "0.000", "0.000", "4.500", "Mn1", "4.500", "+0.5"],
+        ["1", "Mn", "0.000", "0.000", "-4.500", "Mn2", "-4.500", "-0.5"],
+    ]
+
+
+def test_starting_magnetization_is_bold():
+    html = magmoms_table_html(["Mn", "Mn"], [[0, 0, 4.5], [0, 0, -4.5]], ROWS)
+    assert re.findall(r"<b>([^<]*)</b>", html) == ["+0.5", "-0.5"]
+
+
+def test_table_without_collinear_moments_shows_the_reason():
+    html = magmoms_table_html(["Mn"], [[0, 0, 4.5]], [], error="ValueError: <boom>")
+    row = _cells(re.findall(r"<tr>(?:<td.*?</td>)+</tr>", html)[0], "td")
+    assert row == ["0", "Mn", "0.000", "0.000", "4.500", "–", "–", "–"]
+    assert "could not be computed: ValueError: &lt;boom&gt;" in html

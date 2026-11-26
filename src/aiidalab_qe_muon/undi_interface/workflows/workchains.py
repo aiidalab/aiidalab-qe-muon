@@ -5,9 +5,9 @@ The three work chains are nested::
     MultiSitesWorkChain                  one child per muon site
      └─ UndiAndKuboToyabeWorkChain       call link label: ``polarization_structure_{site}``
          ├─ PythonJob (compute_KT)       ``KuboToyabe_run``
-         ├─ UndiMultiAnalysisWorkChain   ``convergence_check`` (B = 0, all ``max_hdims``)
+         ├─ UndiMultiAnalysisWorkChain   ``convergence_check`` (B = 0, all ``max_hdims``; first site only)
          │   └─ PythonJob (undi_run)     ``iter_{i}``
-         └─ UndiMultiAnalysisWorkChain   ``undi_runs`` (all ``B_mods``, one ``max_hdim``)
+         └─ UndiMultiAnalysisWorkChain   ``undi_runs`` (all ``B_mods``, the production ``max_hdim``)
              └─ PythonJob (undi_run)     ``iter_{i}``
 
 The call link labels are read by the results viewer: do not change them lightly.
@@ -25,6 +25,11 @@ from aiidalab_qe_muon.undi_interface.calculations.pythonjobs import (
     prepare_kt_inputs,
     prepare_undi_run_inputs,
 )
+
+# Hilbert-space dimensions of the convergence check (the largest one is the reference of the check)...
+DEFAULT_MAX_HDIMS = [10**2, 10**4, 10**6]
+# ... and the one of the production runs, at every field.
+DEFAULT_MAX_HDIM = 10**6
 
 DEFAULT_TASK_METADATA = {
     "options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}
@@ -61,8 +66,11 @@ def _returned_results(process: orm.ProcessNode) -> dict:
     return _flatten(nested.get("results", {}))
 
 
-def _add_undi_inputs(spec, *, B_mods, max_hdims):
-    """Add to ``spec`` the inputs shared by all the work chains."""
+def _add_undi_inputs(spec, *, B_mods, max_hdims, production_max_hdim=None):
+    """Add to ``spec`` the inputs shared by the work chains.
+
+    ``production_max_hdim`` adds the ``max_hdim`` input, if not ``None``: the size used by the production runs.
+    """
     spec.input(
         "code",
         valid_type=orm.AbstractCode,
@@ -78,8 +86,15 @@ def _add_undi_inputs(spec, *, B_mods, max_hdims):
         "max_hdims",
         valid_type=orm.List,
         default=lambda: orm.List(list(max_hdims)),
-        help="The maximum Hilbert-space dimensions used to compute (and check the convergence of) the polarization.",
+        help="The maximum Hilbert-space dimensions of the convergence check (at zero field).",
     )
+    if production_max_hdim is not None:
+        spec.input(
+            "max_hdim",
+            valid_type=orm.Int,
+            default=lambda: orm.Int(production_max_hdim),
+            help="The maximum Hilbert-space dimension of the production runs, at every field.",
+        )
     spec.input(
         "atom_as_muon",
         valid_type=orm.Str,
@@ -183,7 +198,12 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
     def define(cls, spec):
         super().define(spec)
         spec.input("structure", valid_type=orm.StructureData, help="The structure with the muon.")
-        _add_undi_inputs(spec, B_mods=[0.0], max_hdims=[1e1])
+        _add_undi_inputs(
+            spec,
+            B_mods=[0.0],
+            max_hdims=DEFAULT_MAX_HDIMS,
+            production_max_hdim=DEFAULT_MAX_HDIM,
+        )
         spec.input(
             "convergence_check",
             valid_type=orm.Bool,
@@ -210,7 +230,7 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
             "results.undi_task",
             dynamic=True,
             required=False,
-            help="The UNDI results at each field, for the second-to-last `max_hdim`.",
+            help="The UNDI results at each field, for the production `max_hdim`.",
         )
         spec.exit_code(401, "ERROR_KT_FAILED", message="The Kubo-Toyabe `PythonJob` failed.")
         spec.exit_code(
@@ -264,11 +284,11 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
             self.report(f"submitted UNDI convergence check <PK={future.pk}>")
             self.to_context(undi_conv_task=future)
 
-        # Same selection as the former workgraph: the second-to-last Hilbert-space dimension.
+        # The production runs: every field, with the production Hilbert-space dimension only.
         future = self.submit(
             UndiMultiAnalysisWorkChain,
             **self._undi_inputs(
-                max_hdims=orm.List(self.inputs.max_hdims.get_list()[-2:-1]),
+                max_hdims=orm.List([self.inputs.max_hdim.value]),
                 convergence_check=orm.Bool(False),
                 metadata={"call_link_label": "undi_runs"},
             ),
@@ -320,7 +340,8 @@ class MultiSitesWorkChain(WorkChain):
         _add_undi_inputs(
             spec,
             B_mods=[0, 2e-3, 4e-3, 6e-3, 8e-3],
-            max_hdims=[10**2, 10**4, 10**6, 10**8],
+            max_hdims=DEFAULT_MAX_HDIMS,
+            production_max_hdim=DEFAULT_MAX_HDIM,
         )
         spec.outline(cls.setup, cls.run_sites, cls.inspect_sites)
         spec.output_namespace(
@@ -346,6 +367,7 @@ class MultiSitesWorkChain(WorkChain):
                 code=self.inputs.code,
                 B_mods=self.inputs.B_mods,
                 max_hdims=self.inputs.max_hdims,
+                max_hdim=self.inputs.max_hdim,
                 atom_as_muon=self.inputs.atom_as_muon,
                 algorithm=self.inputs.algorithm,
                 angular_integration_steps=self.inputs.angular_integration_steps,

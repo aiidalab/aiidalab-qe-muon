@@ -48,7 +48,7 @@ python run_implant_muon.py --pw-code <pw-label>
 python run_implant_muon.py --pw-code <pw-label> --findmuon --submit
 ```
 
-Run `--help` on any script for all the options (fields in mT, `max_hdims`, codes, CPUs, profile).
+Run `--help` on any script for all the options (fields in mT, `max_hdims`, `max_hdim`, codes, CPUs, profile).
 The fields are given in mT and converted to Tesla, as the app does.
 
 ## What the scripts print
@@ -64,8 +64,9 @@ On failure they print the work chain report and the reports of the failed calcul
 
 ## Notes
 
-- `max_hdims` needs at least two values, except for `analysis`: the UNDI runs of `UndiAndKuboToyabeWorkChain` use the second-to-last one,
-  while the convergence check (first site only) uses all of them at zero field.
+- `--max-hdims` are the Hilbert-space dimensions of the convergence check (first site only, at zero field; the largest is
+  the reference), and `--max-hdim` the one of the production runs at every field (not used by `analysis`). The app uses
+  `10²`, `10⁴`, `10⁶` and `10⁶`; the examples default to smaller values (`10²`, `10³`, `10⁴` and `10⁴`) to run quickly.
 - The structures are small Cu supercells with the muon as an `H` in the last site (octahedral for site `0`,
   tetrahedral for site `1` in the `multisites` example), enough to test the workflow, not to get physical results.
 - `run_implant_muon.py` uses a 1x1x1 supercell matrix, to keep a `--findmuon` test short; increase it for real

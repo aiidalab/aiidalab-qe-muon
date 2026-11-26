@@ -67,7 +67,14 @@ class ImplantMuonWorkChain(WorkChain):
             "undi_max_hdims",
             valid_type= orm.List,
             required=False,
-            help="The list of max_dims to compute the polarization convergence.",
+            help="The list of max_dims of the polarization convergence check (at zero field). "
+            "Default: [10**2, 10**4, 10**6].",
+        )
+        spec.input(
+            "undi_max_hdim",
+            valid_type=orm.Int,
+            required=False,
+            help="The max_dim of the polarization production runs, at every field. Default: 10**6.",
         )
         
         spec.expose_inputs(
@@ -178,6 +185,7 @@ class ImplantMuonWorkChain(WorkChain):
         undi_metadata=None,
         undi_fields=None,
         undi_max_hdims=None,
+        undi_max_hdim=None,
         protocol=None,
         enforce_defaults: bool = True,
         compute_findmuon: bool = True,
@@ -288,6 +296,9 @@ class ImplantMuonWorkChain(WorkChain):
         
         if undi_max_hdims and compute_polarization_undi:
             builder.undi_max_hdims = orm.List(undi_max_hdims)
+
+        if undi_max_hdim and compute_polarization_undi:
+            builder.undi_max_hdim = orm.Int(undi_max_hdim)
             
         builder.kind_names = orm.List(
             list(
@@ -388,7 +399,7 @@ class ImplantMuonWorkChain(WorkChain):
 
     def compute_polarization(self):
         # Submit the polarization estimation (Undi and KT) of all the structures.
-        # The defaults for the fields and the max_hdims are those of the `MultiSitesWorkChain`.
+        # The defaults for the fields and the max_hdim(s) are those of the `MultiSitesWorkChain`.
         inputs = {
             "structure_group": self.ctx.structure_group,
             "code": self.inputs.undi_code,
@@ -400,6 +411,8 @@ class ImplantMuonWorkChain(WorkChain):
             inputs["B_mods"] = self.inputs.undi_fields
         if "undi_max_hdims" in self.inputs:
             inputs["max_hdims"] = self.inputs.undi_max_hdims
+        if "undi_max_hdim" in self.inputs:
+            inputs["max_hdim"] = self.inputs.undi_max_hdim
 
         process = self.submit(MultiSitesWorkChain, **inputs)
         self.report(

@@ -50,3 +50,70 @@ def collinearize_magmoms(structure, magmoms, half: bool = True) -> dict:
             }
         )
     return {"rows": rows, "start_mag": dict(start_mag)}
+
+
+def magmoms_table_html(kinds, magmoms, collinear_rows=(), error: str = "") -> str:
+    """The table of the magnetic moments of the structure and their collinearization, as HTML.
+
+    One row per site: the kind and the moment of the structure (e.g. from an mcif), then, as computed by
+    :func:`collinearize_magmoms`, the new kind, the collinear moment along z and the starting magnetization
+    given to Quantum ESPRESSO (in bold). The collinear columns show ``–`` if ``collinear_rows`` is empty or
+    shorter than the moments; ``error`` is then shown below the table, if given.
+
+    :param kinds: the kind name of each site of the structure.
+    :param magmoms: one ``[mx, my, mz]`` per site.
+    :param collinear_rows: the ``rows`` returned by :func:`collinearize_magmoms`.
+    :param error: why the collinear moments are not available, if so.
+    """
+    from html import escape
+
+    cell = "<td style='padding:1px 8px;'>{}</td>"
+    head = "<th style='padding:1px 8px;'>{}</th>"
+    group = "<th colspan='{}' style='padding:1px 8px;border-bottom:1px solid grey;'>{}</th>"
+
+    header_groups = group.format(5, "From the structure (e.g. mcif)") + group.format(
+        3, "Collinearized (used by the workflow)"
+    )
+    header = "".join(
+        head.format(title)
+        for title in [
+            "Site",
+            "Kind",
+            "mx (μ<sub>B</sub>)",
+            "my",
+            "mz",
+            "New kind",
+            "mz (μ<sub>B</sub>)",
+            "Starting magnetization",
+        ]
+    )
+
+    rows = []
+    for index, magmom in enumerate(magmoms):
+        kind = kinds[index] if index < len(kinds) else ""
+        values = [index, escape(str(kind))] + [f"{x:.3f}" for x in magmom]
+        if index < len(collinear_rows):
+            row = collinear_rows[index]
+            values += [
+                escape(str(row["kind"])),
+                f"{row['magmom'][2]:.3f}",
+                f"<b>{row['start_mag']:+.1f}</b>",
+            ]
+        else:
+            values += ["–", "–", "–"]
+        rows.append("<tr>" + "".join(cell.format(v) for v in values) + "</tr>")
+
+    note = (
+        "<span style='color:grey;font-size:0.85em;'>Collinearization as done by <code>aiida-muon</code> for the "
+        "workflow: the moments are made collinear along z and the kinds are split by element and spin. "
+        "The starting magnetization is the value given to Quantum ESPRESSO.</span>"
+    )
+    if error:
+        note += (
+            "<br><span style='color:#b00;font-size:0.85em;'>The collinear moments could not be computed: "
+            f"{escape(error)}</span>"
+        )
+    return (
+        f"<table style='font-size:0.85em;border-collapse:collapse;'><tr>{header_groups}</tr><tr>{header}</tr>"
+        f"{''.join(rows)}</table>{note}"
+    )

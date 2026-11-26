@@ -1,12 +1,10 @@
 """Tests of the quantities of the convergence analysis: ΔP = P - Pᵣ and 100·ΔP/Pᵣ (no app needed)."""
 
-import importlib.util
-import sys
-import types
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from _stubs import fake_modules
 from numpy.testing import assert_allclose
 
 from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity
@@ -53,32 +51,15 @@ def test_every_toggle_value_has_a_label():
 @pytest.fixture
 def undiwidget(monkeypatch):
     """The `undiwidget` module: with the real app if installed, else with a stand-in for `aiidalab_qe`."""
-    if importlib.util.find_spec("aiidalab_qe") is None:
-
-        class Dummy:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def __class_getitem__(cls, item):
-                return cls
-
-        def fake(name):
-            module = types.ModuleType(name)
-            module.__path__ = []
-
-            def getattr_(attr):
-                if attr.startswith("__"):
-                    raise AttributeError(attr)
-                return type(attr, (Dummy,), {})
-
-            module.__getattr__ = getattr_
-            monkeypatch.setitem(sys.modules, name, module)
-
-        for name in ("aiidalab_qe", "aiidalab_qe.common", "aiidalab_qe.common.widgets", "aiidalab_qe.common.infobox",
-                     "aiidalab_qe.common.mvc", "aiidalab_qe.plugins"):
-            fake(name)
-    for name in [m for m in sys.modules if m.startswith("aiidalab_qe_muon.app")]:
-        monkeypatch.delitem(sys.modules, name)  # re-imported with the stand-in, and not kept for the other tests
+    fake_modules(
+        monkeypatch,
+        "aiidalab_qe",
+        "aiidalab_qe.common",
+        "aiidalab_qe.common.widgets",
+        "aiidalab_qe.common.infobox",
+        "aiidalab_qe.common.mvc",
+        "aiidalab_qe.plugins",
+    )
     from aiidalab_qe_muon.app.results.sub_mvc import undiwidget
 
     return undiwidget

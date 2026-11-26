@@ -2,6 +2,7 @@
 
 import datetime
 import functools
+import html
 import io
 import pathlib
 import tempfile
@@ -24,14 +25,24 @@ from aiidalab_widgets_base import (
 )
 from pymatgen.core import Structure
 
-def get_pymatgen_from_file(fname, file_format="mcif",primitive=True):  # pylint: disable=redefined-builtin
-    """Get pymatgen structure object."""
+def get_pymatgen_from_file(fname, file_format="mcif", primitive=True):  # pylint: disable=redefined-builtin
+    """Get the first pymatgen structure of a (m)cif file.
+
+    :raises ValueError: if the file cannot be read, with the reason (and the original exception as its cause).
+    """
+    name = pathlib.Path(fname).name
     try:
-        parser  = CifParser(fname)
-        traj    = parser.get_structures(primitive = primitive)[0]
-    except:
-        raise ValueError(f"Could not read any information from the file {fname}")
-    return traj
+        parser = CifParser(fname)
+        # `get_structures` was renamed `parse_structures` in recent pymatgen versions.
+        read = getattr(parser, "parse_structures", None) or parser.get_structures
+        structures = read(primitive=primitive)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not read the file {name}: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not structures:
+        raise ValueError(f"No structure found in the file {name}")
+    return structures[0]
 
 
 class ImportMagnetism(StructureUploadWidget):
@@ -73,7 +84,11 @@ class ImportMagnetism(StructureUploadWidget):
         self._status_message = StatusHTML(clear_after=5)
         self.file_upload.observe(self._on_file_upload, names="value")
         
-        self.children = tuple([self.file_upload_subwidget1, self.message]) + self.children
+        # why a file could not be read (shown until the next upload)
+        self.error_message = ipw.HTML()
+        self.children = tuple(
+            [self.file_upload_subwidget1, self.message, self.error_message]
+        ) + self.children
         
     def _validate_and_fix_pymatgen_cell(self, structure):
     
@@ -92,13 +107,17 @@ class ImportMagnetism(StructureUploadWidget):
             temp_file.write(content)
             temp_file.flush()
             try:
-                structures = get_pymatgen_from_file(temp_file.name,primitive=not self.file_upload_subwidget1.value)
-            except KeyError:
-                self._status_message.message = f"""
-                    <div class="alert alert-danger">ERROR: Could not parse file {fname}</div>
-                    """
+                structures = get_pymatgen_from_file(
+                    temp_file.name, primitive=not self.file_upload_subwidget1.value
+                )
+            except ValueError as exc:
+                # the reason is in the message of the exception, which also chains the original one
+                reason = html.escape(str(exc).replace(pathlib.Path(temp_file.name).name, fname))
+                self.error_message.value = (
+                    f'<div class="alert alert-danger"><b>ERROR:</b> <code>{reason}</code></div>'
+                )
                 return None
+            self.error_message.value = ""
 
-            
             return self._validate_and_fix_pymatgen_cell(structures)
         

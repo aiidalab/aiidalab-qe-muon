@@ -146,15 +146,27 @@ class UndiPlotWidget(ipw.VBox):
             
         else:
             
-            used_hdim = int(np.log10(self._model.max_hdims[-2]))
+            reference_hdim = int(np.log10(max(self._model.max_hdims)))
+            production_hdim = self._model.production_max_hdim
+            if production_hdim is not None and int(np.log10(production_hdim)) == reference_hdim:
+                reference_text = (
+                    f"max<sub>hdim</sub>=10<sup>{reference_hdim}</sup>, the value used in the 'Polarization data' plot: "
+                    "the analysis shows how far the smaller values are from it"
+                )
+            elif production_hdim is not None:
+                reference_text = (
+                    f"max<sub>hdim</sub>=10<sup>{reference_hdim}</sup>, the largest one, "
+                    f"while the 'Polarization data' plot uses max<sub>hdim</sub>=10<sup>{int(np.log10(production_hdim))}</sup>"
+                )
+            else:
+                reference_text = f"max<sub>hdim</sub>=10<sup>{reference_hdim}</sup>, the largest one"
             description = ipw.HTML(
                 f"""
                 This section allows you to examine the convergence with respect to the maximum Hilbert space dimension (max<sub>hdim</sub>),
                 which is used to construct the Hamiltonian for muon-nuclei interactions. For more details, please refer to the 
                 <a href="https://undi.readthedocs.io/en/latest/examples/auto.html#approximations" target="_blank">documentation</a>. <br>
                 <ul>
-                    <li> A reference polarization P<sub>r</sub>(t) is computed using a max<sub>hdim</sub> larger than the
-                    value used in the 'Polarization data' plot (max<sub>hdim</sub>=10<sup>{used_hdim}</sup>); </li>
+                    <li> A reference polarization P<sub>r</sub>(t) is computed using {reference_text}; </li>
                 </ul>
                 """
             )

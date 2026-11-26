@@ -22,6 +22,7 @@ import argparse
 
 from _common import (
     DEFAULT_FIELDS_MT,
+    DEFAULT_MAX_HDIM,
     DEFAULT_MAX_HDIMS,
     PYTHONJOB_CODE,
     cu_h_structure,
@@ -49,7 +50,14 @@ def parse_args(argv=None):
         type=int,
         nargs="+",
         default=DEFAULT_MAX_HDIMS,
-        help="maximum Hilbert-space dimensions; at least two (default: %(default)s)",
+        help="maximum Hilbert-space dimensions of the convergence check, at zero field; the largest is the "
+        "reference (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--max-hdim",
+        type=int,
+        default=DEFAULT_MAX_HDIM,
+        help="maximum Hilbert-space dimension of the production runs, at every field (default: %(default)s)",
     )
     parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per pw.x / PythonJob (default: %(default)s)")
     parser.add_argument("--dry-run", action="store_true", help="build and validate the builder, do not launch")
@@ -58,8 +66,6 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.show is None and not args.pw_code:
         parser.error("--pw-code is required (unless --show is used)")
-    if len(args.max_hdims) < 2:
-        parser.error("--max-hdims needs at least two values (the UNDI runs use the second-to-last one)")
     return args
 
 
@@ -90,6 +96,7 @@ def get_builder(args, pw_code, pp_code, undi_code):
         compute_polarization_undi=True,
         undi_fields=[field * 1e-3 for field in args.fields],  # mT -> T
         undi_max_hdims=args.max_hdims,
+        undi_max_hdim=args.max_hdim,
         # a minimal supercell, for a quick test: increase it (or pass None to converge it) for real results.
         sc_matrix=[[1, 0, 0], [0, 1, 0], [0, 0, 1]],
         mu_spacing=1.5,
@@ -132,7 +139,8 @@ def main(argv=None):
     print(f"  structure: {builder.structure.get_formula()} ({'host only' if args.findmuon else 'with the muon'})")
     print(f"  implant_muon: {builder.implant_muon.value if hasattr(builder.implant_muon, 'value') else builder.implant_muon}")
     print(f"  undi_fields [T]: {builder.undi_fields.get_list()}")
-    print(f"  undi_max_hdims: {builder.undi_max_hdims.get_list()}")
+    print(f"  undi_max_hdims (convergence check): {builder.undi_max_hdims.get_list()}")
+    print(f"  undi_max_hdim (production): {builder.undi_max_hdim.value}")
     error = validate(builder)
     print(f"  validation: {'OK' if error is None else error}")
 

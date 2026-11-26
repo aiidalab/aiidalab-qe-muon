@@ -22,10 +22,7 @@ def undi_run(
     algorithm="fast",
     angular_integration_steps=7,
 ) -> dict:
-    try:
-        from undi.auto_analysis import execute_auto_analysis as execute_undi_analysis
-    except ImportError:  # older undi (``update`` branch): the module had another name
-        from undi.undi_analysis import execute_undi_analysis
+    from undi.auto_analysis import execute_auto_analysis as execute_undi_analysis
 
     results = execute_undi_analysis(
         structure,
@@ -44,7 +41,8 @@ def compute_KT(
     structure,  # StructureData in AiiDA (provenance); the pythonjob deserializes it into ASE Atoms.
 ) -> dict:
     import numpy as np
-    from undi.kubo_toyabe.KT import compute_second_moments, kubo_toyabe
+    from undi.auto_analysis import compute_second_moments    
+    from undi.kubo_toyabe.KT import kubo_toyabe
 
     t = np.linspace(0, 20e-6, 1000)  # time is seconds
     sm = compute_second_moments(structure)

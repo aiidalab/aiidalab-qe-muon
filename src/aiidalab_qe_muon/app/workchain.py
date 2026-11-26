@@ -147,15 +147,11 @@ def get_builder(codes, structure, parameters):
         undi_fields = list(set(parameters["muonic"].pop("undi_fields", [])))
         # conversion from mT to T: 
         undi_fields = [field * 1e-3 for field in undi_fields]
-        
-        if protocol == "fast":
-            undi_max_hdims = [10**2, 10**4, 10**6]
-        else:
-            undi_max_hdims = []
     else:
         undi_fields = []
-        undi_max_hdims = []
-    
+    # The Hilbert-space dimensions are those of the work chains: convergence check with 10^2, 10^4 and 10^6,
+    # production runs with 10^6.
+
     builder = ImplantMuonWorkChain.get_builder_from_protocol(
         pw_muons_code=pw_code,
         pp_code=pp_code,
@@ -168,7 +164,6 @@ def get_builder(codes, structure, parameters):
         compute_findmuon=compute_findmuon,
         compute_polarization_undi=compute_polarization_undi,
         undi_fields=undi_fields if len(undi_fields) > 0 else None,
-        undi_max_hdims=undi_max_hdims if len(undi_max_hdims) > 0 else None,
         overrides=overrides,
         trigger=trigger,
         relax_unitcell=False,  # but not true in the construction; in the end you relax in the first step of the QeAppWorkchain.

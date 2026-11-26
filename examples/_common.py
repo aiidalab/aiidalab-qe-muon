@@ -7,9 +7,11 @@ from aiida.common.links import LinkType
 
 PYTHONJOB_CODE = "python-3.12-devbox"  # can be created by `aiidalab-qe-muon setup-python3` with a different label, check it.
 
-# Same fields and Hilbert-space dimensions as the `fast` protocol of the app (fields in mT there, in T here).
+# Small values, for a quick test (fields in mT, as in the app). The app uses [10**2, 10**4, 10**6] for the
+# convergence check and 10**6 for the production runs, which can take long.
 DEFAULT_FIELDS_MT = [0.0, 2.0]
-DEFAULT_MAX_HDIMS = [10**2, 10**3, 10**4]
+DEFAULT_MAX_HDIMS = [10**2, 10**3, 10**4]  # convergence check (the largest one is the reference)
+DEFAULT_MAX_HDIM = 10**4  # production runs
 
 
 def cu_structure() -> orm.StructureData:

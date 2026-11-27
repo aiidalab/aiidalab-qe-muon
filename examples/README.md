@@ -4,7 +4,7 @@
 |---|---|
 | [`run_undi_workchains.py`](run_undi_workchains.py) | The three UNDI / Kubo-Toyabe work chains on their own: `analysis` (`UndiMultiAnalysisWorkChain`), `kubo-toyabe` (`UndiAndKuboToyabeWorkChain`), `multisites` (`MultiSitesWorkChain`). |
 | [`run_implant_muon.py`](run_implant_muon.py) | `ImplantMuonWorkChain`, polarization only (default) or with the DFT muon-site search (`--findmuon`). |
-| [`_common.py`](_common.py) | Shared helpers: the Cu / Cu+H test structures, the `PythonJob` metadata, and the printing of the results. |
+| [`_common.py`](_common.py) | Shared helpers: the Cu / Cu+H test structures, the metadata of the shell jobs, and the printing of the results. |
 
 ## Prerequisites
 
@@ -15,15 +15,15 @@
    pip install -e .
    ```
 
-3. The `PythonJob` code that runs UNDI. On the local computer:
+3. The code that runs UNDI: a `python` with the `core.shell` plugin (`aiida-shell`), whose environment has `undi[undi]`
+   installed. On the local computer:
 
    ```shell
-   aiidalab-qe-muon setup-python3      # creates python3@localhost
+   aiidalab-qe-muon setup-python3      # creates python3-shell@localhost, with the python of this environment
    ```
 
-   The Python it points to must be able to `import undi` and `cloudpickle`. For a remote computer, create the
-   conda environment as described in the main [README](../README.md) and use its code with `--code` /
-   `--undi-code`.
+   For another computer, see the main [README](../README.md). The scripts take its label with `--code` / `--undi-code`
+   (`_common.py` has the default).
 4. For `run_implant_muon.py` only: a `pw.x` code, and the pseudopotentials (`aiida-pseudo install sssp`, for the
    default `SSSP/1.3/PBE/efficiency`). A `pw` code is needed even for the polarization only, because the builder
    is created through `FindMuonWorkChain.get_builder_from_protocol`; nothing is run with it in that case.
@@ -54,7 +54,7 @@ The fields are given in mT and converted to Tesla, as the app does.
 ## What the scripts print
 
 After a run, `--show` included, the scripts print the state and the `results` tree of the work chain, then walk the
-provenance like the results viewer does: Kubo-Toyabe output → its `PythonJob` → site work chain →
+provenance like the results viewer does: Kubo-Toyabe output → its shell job → site work chain →
 `MultiSitesWorkChain` → one work chain per site, with the site index read from the call-link label
 (`polarization_structure_{index}`) and the `(B, max_hdim)` of every UNDI run of `convergence_check` and
 `undi_runs`. If that walk fails or reaches a different `MultiSitesWorkChain`, the viewer would not find the data

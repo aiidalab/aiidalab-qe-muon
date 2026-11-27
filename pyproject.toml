@@ -20,8 +20,8 @@ dependencies = [
     "aiida-core>=2.8,<3",
     "aiida-muon @ git+https://github.com/mikibonacci/aiida-muon.git@new_deps",  # TODO: back to @main once new_deps is merged
     "pymatgen>=2023.9.25",
-    "aiida-pythonjob~=0.5.2",
-    "undi @ git+https://github.com/bonfus/undi.git@main",
+    "aiida-shell>=0.7",
+    "undi[undi] @ git+https://github.com/mikibonacci/undi.git@shelljobs",  # TODO: back to bonfus/undi@main once merged
     "pybind11"
 ]
 

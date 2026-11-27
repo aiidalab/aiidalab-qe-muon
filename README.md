@@ -11,43 +11,41 @@ Then, install this plugin by:
 pip install -e .
 ```
 
-To also install the needed codes, if not already there, you can then run:
+### The code that runs undi
+
+The polarization is computed by running the command line of [undi](https://undi.readthedocs.io/en/latest/index.html)
+(`python -m undi` and `python -m undi.kubo_toyabe`) as [aiida-shell](https://aiida-shell.readthedocs.io) jobs. They need a
+`python` code, with the `core.shell` plugin, whose environment has `undi` installed (with its `undi` extra: `ase`, `tqdm`).
+
+On the local computer, to set up the code with the python of the current environment (it is labelled
+`python3-shell@localhost`, so it does not clash with the `python3` code of the former `aiida-pythonjob` version):
 
 ```shell
-install_muon_codes
+aiidalab-qe-muon setup-python3
+aiidalab-qe-muon verify-post-install
 ```
 
-To automatically (nb: you can do it also by hands) install on a local/remote computer (already set up in AiiDA) the needed conda environment for [undi](https://undi.readthedocs.io/en/latest/index.html) calculations,
-open a verdi shell and run:
+On a computer (local or remote) already set up in AiiDA, you can create the environment and the code by hand. For example,
+with conda:
 
-```python
-from aiida_pythonjob.utils import create_conda_env
-
-computer_label = "<computer_label>" # Remote computer label, already stored in the AiiDA database
-env_name = "<environment_name>"     # Desired name of the conda environment you are going to create
-
-```python
-create_conda_env(
-    computer_label,          
-    env_name,         
-    modules=[],                   # Modules to be loaded in order to invoke conda
-    pip=[
-        "numpy~=1.26",
-        "ase",
-        "tqdm",
-        "pandas",
-        "pybind11",
-        "git+https://github.com/mikibonacci/undi.git@update",
-        ],  # Python packages to be installed via pip
-    conda={                   # Conda-specific settings
-        "channels": ["conda-forge"],  # Channels to use
-        "dependencies": ["cloudpickle"] # package to install using conda
-    },
-    install_conda=True,
-)
+```shell
+conda create -n undi python=3.12 -y
+conda activate undi
+pip install "undi[undi] @ git+https://github.com/mikibonacci/undi.git@shelljobs"
 ```
 
-for more details on this procedure, see the official `aiida-pythonjob` [documentation](https://aiida-pythonjob.readthedocs.io/en/latest/autogen/how_to.html#create-a-conda-environment-on-the-remote-computer).
+and then, giving the path of the python of that environment:
+
+```shell
+verdi code create core.code.installed \
+    --label python3-shell \
+    --computer <computer_label> \
+    --default-calc-job-plugin core.shell \
+    --filepath-executable <path/to/envs/undi/bin/python> \
+    --non-interactive
+```
+
+(use `--prepend-text` to load modules or activate the environment if needed).
 
 ## License
 

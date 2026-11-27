@@ -8,9 +8,11 @@ import shutil
 import click
 
 """
-Automatic installation of the pythonjob code, needed to run undi.
+Automatic installation of the code that runs undi: the python of this environment, as a `core.shell` code
+(`aiida-shell`), labelled `python3-shell` so that it does not clash with a `python3` code of the former
+`aiida-pythonjob` version of this plugin.
 
-So we only setup in AiiDA.
+The python needs `undi[undi]` (and its dependencies) installed. So we only setup in AiiDA.
 """
 
 
@@ -19,13 +21,13 @@ def cli():
     pass
 
 
-@cli.command(help="Setup python3@localhost in the current AiiDA database.")
+@cli.command(help="Setup python3-shell@localhost in the current AiiDA database.")
 def setup_python3():
     load_profile()
     try:
-        load_code("python3@localhost")
+        load_code("python3-shell@localhost")
     except NotExistent:
-        # Use shutil.which to find the path of the phonopy executable
+        # Use shutil.which to find the path of the python executable
         python_path = shutil.which("python3")
         if not python_path:
             raise FileNotFoundError("python3 code is not found in PATH")
@@ -37,9 +39,9 @@ def setup_python3():
             "core.code.installed",
             "--non-interactive",
             "--label",
-            "python3",
+            "python3-shell",
             "--default-calc-job-plugin",
-            "pythonjob.pythonjob",
+            "core.shell",
             "--computer",
             "localhost",
             "--filepath-executable",
@@ -49,26 +51,26 @@ def setup_python3():
         # Use subprocess.run to run the command
         subprocess.run(command, check=True)
     else:
-        print("Code python3@localhost is already installed! Nothing to do here.")
+        print("Code python3-shell@localhost is already installed! Nothing to do here.")
 
 
-@cli.command(help="Verify the python3@localhost post-install setup.")
+@cli.command(help="Verify the python3-shell@localhost post-install setup.")
 @click.option("-p", "--profile", default="default", help="AiiDA profile name.")
 def verify_post_install(profile):
     load_profile(profile)
     try:
-        code = load_code("python3@localhost")
+        code = load_code("python3-shell@localhost")
     except NotExistent as error:
         raise click.ClickException(
-            "AiiDA code python3@localhost is not configured. Run setup-python3."
+            "AiiDA code python3-shell@localhost is not configured. Run setup-python3."
         ) from error
 
     executable = code.filepath_executable
     if not executable:
-        raise click.ClickException("AiiDA code python3@localhost executable is not set")
+        raise click.ClickException("AiiDA code python3-shell@localhost executable is not set")
 
     filepath = Path(executable)
-    failure_prefix = "AiiDA code python3@localhost executable is"
+    failure_prefix = "AiiDA code python3-shell@localhost executable is"
     if not filepath.exists():
         raise click.ClickException(f"{failure_prefix} missing: {executable}")
     if not filepath.is_file():

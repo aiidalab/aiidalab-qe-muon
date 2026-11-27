@@ -4,11 +4,15 @@ The three work chains are nested::
 
     MultiSitesWorkChain                  one child per muon site
      └─ UndiAndKuboToyabeWorkChain       call link label: ``polarization_structure_{site}``
-         ├─ PythonJob (compute_KT)       ``KuboToyabe_run``
+         ├─ calcfunction                 ``structure_file`` (the structure, as a file for ``undi``)
+         ├─ ShellJob (undi.kubo_toyabe)  ``KuboToyabe_run``
          ├─ UndiMultiAnalysisWorkChain   ``convergence_check`` (B = 0, all ``max_hdims``; first site only)
-         │   └─ PythonJob (undi_run)     ``iter_{i}``
+         │   └─ ShellJob (undi)          ``iter_{i}``
          └─ UndiMultiAnalysisWorkChain   ``undi_runs`` (all ``B_mods``, the production ``max_hdim``)
-             └─ PythonJob (undi_run)     ``iter_{i}``
+             └─ ShellJob (undi)          ``iter_{i}``
+
+The jobs are ``aiida_shell.ShellJob``: the ``code`` is a python with ``undi[undi]`` installed, and the jobs run
+``python -m undi`` and ``python -m undi.kubo_toyabe`` (see ``undi_interface/calculations/shelljobs.py``).
 
 The call link labels are read by the results viewer: do not change them lightly.
 """
@@ -21,9 +25,10 @@ from aiida import orm
 from aiida.common.links import LinkType
 from aiida.engine import WorkChain
 
-from aiidalab_qe_muon.undi_interface.calculations.pythonjobs import (
+from aiidalab_qe_muon.undi_interface.calculations.shelljobs import (
     prepare_kt_inputs,
     prepare_undi_run_inputs,
+    structure_to_file,
 )
 
 # Hilbert-space dimensions of the convergence check (the largest one is the reference of the check)...
@@ -36,14 +41,14 @@ DEFAULT_TASK_METADATA = {
 }
 
 
-def _get_pythonjob_class():
+def _get_shelljob_class():
     from aiida.plugins import CalculationFactory
 
-    return CalculationFactory("pythonjob.pythonjob")
+    return CalculationFactory("core.shell")
 
 
 def _with_call_link_label(inputs: dict, label: str) -> dict:
-    """Return the ``PythonJob`` inputs with ``metadata.call_link_label`` set to ``label``."""
+    """Return the ``ShellJob`` inputs with ``metadata.call_link_label`` set to ``label``."""
     inputs = dict(inputs)
     inputs["metadata"] = {**(inputs.get("metadata") or {}), "call_link_label": label}
     return inputs
@@ -74,7 +79,7 @@ def _add_undi_inputs(spec, *, B_mods, max_hdims, production_max_hdim=None):
     spec.input(
         "code",
         valid_type=orm.AbstractCode,
-        help="The `PythonJob` code used to run the UNDI and Kubo-Toyabe calculations.",
+        help="The code of the python (with `undi` installed) that runs the UNDI and Kubo-Toyabe calculations, as `aiida-shell` jobs.",
     )
     spec.input(
         "B_mods",
@@ -118,7 +123,7 @@ def _add_undi_inputs(spec, *, B_mods, max_hdims, production_max_hdim=None):
         valid_type=dict,
         non_db=True,
         required=False,
-        help="The `metadata` (e.g. `options`) of every `PythonJob`. "
+        help="The `metadata` (e.g. `options`) of every `ShellJob`. "
         "Defaults to `DEFAULT_TASK_METADATA` (single OpenMP thread).",
     )
 
@@ -129,7 +134,11 @@ class UndiMultiAnalysisWorkChain(WorkChain):
     @classmethod
     def define(cls, spec):
         super().define(spec)
-        spec.input("structure", valid_type=orm.StructureData, help="The structure with the muon.")
+        spec.input(
+            "structure_file",
+            valid_type=orm.SinglefileData,
+            help="The structure with the muon, as a file `undi` can read (see `structure_to_file`).",
+        )
         _add_undi_inputs(spec, B_mods=[0.0], max_hdims=[1e1])
         spec.input(
             "convergence_check",
@@ -145,7 +154,7 @@ class UndiMultiAnalysisWorkChain(WorkChain):
             help="The UNDI results of each run, labelled `iter_{i}`, with `i` running over `B_mods` first, then `max_hdims`.",
         )
         spec.exit_code(
-            401, "ERROR_UNDI_RUN_FAILED", message="At least one UNDI `PythonJob` failed."
+            401, "ERROR_UNDI_RUN_FAILED", message="At least one UNDI job failed."
         )
 
     def setup(self):
@@ -156,13 +165,13 @@ class UndiMultiAnalysisWorkChain(WorkChain):
 
     def run_undi(self):
         """Submit all the UNDI runs; they are independent, so they run in parallel."""
-        PythonJob = _get_pythonjob_class()
+        ShellJob = _get_shelljob_class()
         index = 0
         for B_mod in self.inputs.B_mods.get_list():
             for max_hdim in self.inputs.max_hdims.get_list():
                 label = f"iter_{index}"
                 inputs = prepare_undi_run_inputs(
-                    structure=self.inputs.structure,
+                    structure_file=self.inputs.structure_file,
                     code=self.inputs.code,
                     B_mod=B_mod,
                     max_hdim=max_hdim,
@@ -172,7 +181,7 @@ class UndiMultiAnalysisWorkChain(WorkChain):
                     angular_integration_steps=self.inputs.angular_integration_steps.value,
                     metadata=self.ctx.task_metadata,
                 )
-                future = self.submit(PythonJob, **_with_call_link_label(inputs, label))
+                future = self.submit(ShellJob, **_with_call_link_label(inputs, label))
                 self.report(f"submitted UNDI run `{label}` <PK={future.pk}>")
                 self.to_context(**{label: future})
                 index += 1
@@ -232,7 +241,7 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
             required=False,
             help="The UNDI results at each field, for the production `max_hdim`.",
         )
-        spec.exit_code(401, "ERROR_KT_FAILED", message="The Kubo-Toyabe `PythonJob` failed.")
+        spec.exit_code(401, "ERROR_KT_FAILED", message="The Kubo-Toyabe job failed.")
         spec.exit_code(
             402,
             "ERROR_CONVERGENCE_FAILED",
@@ -244,10 +253,14 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
         self.ctx.task_metadata = copy.deepcopy(
             self.inputs.get("task_metadata", DEFAULT_TASK_METADATA)
         )
+        # the jobs read the structure from a file: made once, shared by all of them.
+        self.ctx.structure_file = structure_to_file(
+            self.inputs.structure, metadata={"call_link_label": "structure_file"}
+        )
 
     def _undi_inputs(self, **overrides):
         inputs = {
-            "structure": self.inputs.structure,
+            "structure_file": self.ctx.structure_file,
             "code": self.inputs.code,
             "B_mods": self.inputs.B_mods,
             "max_hdims": self.inputs.max_hdims,
@@ -261,14 +274,14 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
 
     def run_analyses(self):
         """Submit the Kubo-Toyabe job and the UNDI work chains; they are independent, so they run in parallel."""
-        PythonJob = _get_pythonjob_class()
+        ShellJob = _get_shelljob_class()
 
         kt_inputs = prepare_kt_inputs(
-            structure=self.inputs.structure,
+            structure_file=self.ctx.structure_file,
             code=self.inputs.code,
             metadata=self.ctx.task_metadata,
         )
-        kt_future = self.submit(PythonJob, **_with_call_link_label(kt_inputs, "KuboToyabe_run"))
+        kt_future = self.submit(ShellJob, **_with_call_link_label(kt_inputs, "KuboToyabe_run"))
         self.report(f"submitted Kubo-Toyabe job <PK={kt_future.pk}>")
         self.to_context(kt_task=kt_future)
 

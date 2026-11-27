@@ -5,7 +5,7 @@ from __future__ import annotations
 from aiida import orm
 from aiida.common.links import LinkType
 
-PYTHONJOB_CODE = "python-3.12-devbox"  # can be created by `aiidalab-qe-muon setup-python3` with a different label, check it.
+UNDI_CODE = "python-3.12-devbox"  # a `core.shell` python with undi: `aiidalab-qe-muon setup-python3` creates `python3-shell@localhost`
 
 # Small values, for a quick test (fields in mT, as in the app). The app uses [10**2, 10**4, 10**6] for the
 # convergence check and 10**6 for the production runs, which can take long.
@@ -37,7 +37,7 @@ def cu_h_structure(site: str = "octahedral") -> orm.StructureData:
 
 
 def undi_task_metadata(num_cpus: int = 1, max_wallclock_seconds: int = 3600) -> dict:
-    """The `metadata` of every UNDI / Kubo-Toyabe `PythonJob`."""
+    """The `metadata` of every UNDI / Kubo-Toyabe shell job."""
     return {
         "options": {
             "resources": {"num_machines": 1, "num_mpiprocs_per_machine": num_cpus},
@@ -108,7 +108,7 @@ def check_viewer_path(node: orm.ProcessNode) -> None:
                 continue
             jobs = outgoing.get_node_by_label(label).called
             runs = sorted(
-                (job.inputs.function_inputs.B_mod.value, int(job.inputs.function_inputs.max_hdim.value)) for job in jobs
+                (job.inputs.nodes.B_mod.value, int(job.inputs.nodes.max_hdim.value)) for job in jobs
             )
             print(f"    {label}: (B [T], max_hdim) = {runs}")
 

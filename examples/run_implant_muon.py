@@ -24,7 +24,7 @@ from _common import (
     DEFAULT_FIELDS_MT,
     DEFAULT_MAX_HDIM,
     DEFAULT_MAX_HDIMS,
-    PYTHONJOB_CODE,
+    UNDI_CODE,
     cu_h_structure,
     cu_structure,
     print_results,
@@ -38,7 +38,7 @@ def parse_args(argv=None):
     )
     parser.add_argument("--pw-code", help="pw.x code label (required, except with --show)")
     parser.add_argument("--pp-code", default=None, help="pp.x code label (only needed for magnetic systems)")
-    parser.add_argument("--undi-code", default=PYTHONJOB_CODE, help="PythonJob code label (default: %(default)s)")
+    parser.add_argument("--undi-code", default=UNDI_CODE, help="label of the python (undi) `core.shell` code (default: %(default)s)")
     parser.add_argument("--profile", default=None, help="AiiDA profile (default: the default profile)")
     parser.add_argument("--pseudo-family", default="SSSP/1.3/PBE/efficiency", help="default: %(default)s")
     parser.add_argument("--findmuon", action="store_true", help="also search the muon sites with DFT")
@@ -59,7 +59,7 @@ def parse_args(argv=None):
         default=DEFAULT_MAX_HDIM,
         help="maximum Hilbert-space dimension of the production runs, at every field (default: %(default)s)",
     )
-    parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per pw.x / PythonJob (default: %(default)s)")
+    parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per pw.x / undi job (default: %(default)s)")
     parser.add_argument("--dry-run", action="store_true", help="build and validate the builder, do not launch")
     parser.add_argument("--submit", action="store_true", help="submit to the daemon instead of running here")
     parser.add_argument("--show", type=int, metavar="PK", help="print the results of an existing work chain and exit")

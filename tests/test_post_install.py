@@ -36,16 +36,16 @@ def test_verify_post_install_fails_when_code_is_missing(monkeypatch):
     result = CliRunner().invoke(plugin_cli.cli, ["verify-post-install"])
 
     assert result.exit_code != 0
-    assert "python3@localhost is not configured" in result.output
+    assert "python3-shell@localhost is not configured" in result.output
 
 
 @pytest.mark.parametrize(
     ("path_state", "expected_message"),
     [
-        ("unset", "python3@localhost executable is not set"),
-        ("missing", "python3@localhost executable is missing"),
-        ("directory", "python3@localhost executable is not a file"),
-        ("not_executable", "python3@localhost executable is not executable"),
+        ("unset", "python3-shell@localhost executable is not set"),
+        ("missing", "python3-shell@localhost executable is missing"),
+        ("directory", "python3-shell@localhost executable is not a file"),
+        ("not_executable", "python3-shell@localhost executable is not executable"),
     ],
 )
 def test_verify_post_install_reports_executable_path_state(
@@ -74,3 +74,38 @@ def test_verify_post_install_reports_executable_path_state(
 
     assert result.exit_code != 0
     assert expected_message in result.output
+
+
+def test_setup_creates_a_shell_code_that_does_not_clash_with_the_pythonjob_one(monkeypatch):
+    """The code runs undi through aiida-shell: `core.shell`, labelled `python3-shell`."""
+    from aiida.common.exceptions import NotExistent
+
+    loaded, commands = [], []
+
+    def missing_code(label):
+        loaded.append(label)
+        raise NotExistent("missing")
+
+    monkeypatch.setattr(plugin_cli, "load_profile", lambda *args: None)
+    monkeypatch.setattr(plugin_cli, "load_code", missing_code)
+    monkeypatch.setattr(plugin_cli.subprocess, "run", lambda command, check: commands.append(command))
+
+    result = CliRunner().invoke(plugin_cli.cli, ["setup-python3"])
+
+    assert result.exit_code == 0
+    assert loaded == ["python3-shell@localhost"]  # a `python3@localhost` of the pythonjob version is not in the way
+    (command,) = commands
+    assert command[command.index("--label") + 1] == "python3-shell"
+    assert command[command.index("--default-calc-job-plugin") + 1] == "core.shell"
+
+
+def test_setup_does_nothing_if_the_code_exists(monkeypatch):
+    commands = []
+    monkeypatch.setattr(plugin_cli, "load_profile", lambda *args: None)
+    monkeypatch.setattr(plugin_cli, "load_code", lambda label: SimpleNamespace())
+    monkeypatch.setattr(plugin_cli.subprocess, "run", lambda command, check: commands.append(command))
+
+    result = CliRunner().invoke(plugin_cli.cli, ["setup-python3"])
+
+    assert result.exit_code == 0 and not commands
+    assert "already installed" in result.output

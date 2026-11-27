@@ -167,11 +167,11 @@ class PolarizationModel(Model):
     ):
         """Load the data from the nodes of undi runs.
         we distinguish if nodes are shelljobs (done as in examples_aiida/shelljob.py) or not,
-        i.e. in case we submitted pythonjobs via the `MultiSitesWorkChain`.
+        i.e. in case we submitted shell jobs via the `MultiSitesWorkChain`.
         """
         if not hasattr(self, "nodes"):
-            # polarization is the KT PythonJob output of the first site:
-            # PythonJob -> UndiAndKuboToyabeWorkChain -> MultiSitesWorkChain -> one called work chain per site.
+            # polarization is the output of the KT shell job of the first site:
+            # ShellJob -> UndiAndKuboToyabeWorkChain -> MultiSitesWorkChain -> one called work chain per site.
             self.nodes = self.muon.polarization.creator.caller.caller.called
 
         # work chain case - always the case in standard situations (qe app usage)
@@ -195,7 +195,7 @@ class PolarizationModel(Model):
 
                 # the max_hdim of the production runs, read from the data: it can differ between calculations.
                 production = [
-                    int(job.inputs.function_inputs.max_hdim.value)
+                    int(job.inputs.nodes.max_hdim.value)
                     for job in main_node.base.links.get_outgoing().get_node_by_label("undi_runs").called
                 ]
                 self.production_max_hdim = max(production) if production else None
@@ -213,13 +213,13 @@ class PolarizationModel(Model):
                 ]
                 
                 fields = [
-                    node.inputs.function_inputs.B_mod.value * 1000 for node in descendants
+                    node.inputs.nodes.B_mod.value * 1000 for node in descendants
                 ]  # mT
                 selected_fields = [
-                    node.inputs.function_inputs.B_mod.value * 1000 for node in descendants
+                    node.inputs.nodes.B_mod.value * 1000 for node in descendants
                 ]  # mT
                 max_hdims = [
-                    int(node.inputs.function_inputs.max_hdim.value) for node in descendants
+                    int(node.inputs.nodes.max_hdim.value) for node in descendants
                 ]
                 
                 self.isotopes = [

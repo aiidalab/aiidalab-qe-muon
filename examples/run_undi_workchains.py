@@ -7,7 +7,7 @@
 By default the work chain is run in this process (``run_get_node``, no daemon needed) and the results are printed.
 With ``--submit`` it is sent to the daemon instead; print the results later with ``--show <PK>``.
 
-Requirements: see README.md (the `python3@localhost` PythonJob code, with `undi` installed in its environment).
+Requirements: see README.md (a `core.shell` python code, with `undi[undi]` installed in its environment).
 Structure: Cu with the muon (`H`) as the last site, see ``_common.py``.
 """
 
@@ -19,7 +19,7 @@ from _common import (
     DEFAULT_FIELDS_MT,
     DEFAULT_MAX_HDIM,
     DEFAULT_MAX_HDIMS,
-    PYTHONJOB_CODE,
+    UNDI_CODE,
     cu_h_structure,
     print_results,
     undi_task_metadata,
@@ -36,7 +36,7 @@ def parse_args(argv=None):
         choices=["analysis", "kubo-toyabe", "multisites"],
         help="which work chain to run (not needed with --show)",
     )
-    parser.add_argument("--code", default=PYTHONJOB_CODE, help="PythonJob code label (default: %(default)s)")
+    parser.add_argument("--code", default=UNDI_CODE, help="label of the python (undi) `core.shell` code (default: %(default)s)")
     parser.add_argument("--profile", default=None, help="AiiDA profile (default: the default profile)")
     parser.add_argument(
         "--fields", type=float, nargs="+", default=DEFAULT_FIELDS_MT, help="magnetic fields in mT (default: %(default)s)"
@@ -56,7 +56,7 @@ def parse_args(argv=None):
         help="maximum Hilbert-space dimension of the production runs, at every field; not used by "
         "`analysis` (default: %(default)s)",
     )
-    parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per PythonJob (default: %(default)s)")
+    parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per job (default: %(default)s)")
     parser.add_argument("--submit", action="store_true", help="submit to the daemon instead of running here")
     parser.add_argument("--show", type=int, metavar="PK", help="print the results of an existing work chain and exit")
     args = parser.parse_args(argv)
@@ -68,6 +68,8 @@ def parse_args(argv=None):
 def build_inputs(args, code):
     """Inputs of the chosen work chain; the fields are converted from mT to T."""
     from aiida import orm
+
+    from aiidalab_qe_muon.undi_interface.calculations.shelljobs import structure_to_file
 
     inputs = {
         "code": code,
@@ -81,10 +83,12 @@ def build_inputs(args, code):
             "0": cu_h_structure("octahedral"),
             "1": cu_h_structure("tetrahedral"),
         }
+    elif args.chain == "analysis":
+        # the leaf work chain takes the structure as a file for undi (the others make it themselves)
+        inputs["structure_file"] = structure_to_file(cu_h_structure("octahedral"))
     else:
         inputs["structure"] = cu_h_structure("octahedral")
-        if args.chain == "kubo-toyabe":
-            inputs["convergence_check"] = orm.Bool(True)
+        inputs["convergence_check"] = orm.Bool(True)
     if args.chain != "analysis":
         inputs["max_hdim"] = orm.Int(args.max_hdim)
     return inputs

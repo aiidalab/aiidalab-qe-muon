@@ -34,7 +34,7 @@ from aiidalab_qe_muon.undi_interface.calculations.shelljobs import (
 # Hilbert-space dimensions of the convergence check (the largest one is the reference of the check)...
 DEFAULT_MAX_HDIMS = [10**2, 10**4, 10**6]
 # ... and the one of the production runs, at every field.
-DEFAULT_MAX_HDIM = 10**6
+DEFAULT_MAX_HDIM = 5 * 10**5
 
 # The metadata of the jobs, if none is given. The OpenMP threads of undi follow the resources of the jobs (see
 # `shelljobs.omp_threads`): one CPU, so one thread, if the resources are not given.

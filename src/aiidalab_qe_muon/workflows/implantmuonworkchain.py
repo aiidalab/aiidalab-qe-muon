@@ -74,7 +74,7 @@ class ImplantMuonWorkChain(WorkChain):
             "undi_max_hdim",
             valid_type=orm.Int,
             required=False,
-            help="The max_dim of the polarization production runs, at every field. Default: 10**6.",
+            help="The max_dim of the polarization production runs, at every field. Default: 5*10**5.",
         )
         spec.input(
             "undi_single_precision",

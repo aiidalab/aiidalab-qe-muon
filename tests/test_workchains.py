@@ -156,7 +156,7 @@ def test_undi_and_kubo_toyabe(fake_shelljob, code, structure):
 
 
 def test_default_sizes(fake_shelljob, code, structure):
-    """Convergence check with 10^2, 10^4 and 10^6, production runs with 10^6 (not tied to the list)."""
+    """Convergence check with 10^2, 10^4 and 10^6, production runs with 5*10^5 (not tied to the list)."""
     results, node = run_get_node(
         UndiAndKuboToyabeWorkChain,
         structure=structure,
@@ -174,7 +174,7 @@ def test_default_sizes(fake_shelljob, code, structure):
         job.inputs.nodes.max_hdim.value for _, job in sorted(jobs[label].items())
     ]
     assert sizes("convergence_check") == [10**2, 10**4, 10**6]
-    assert sizes("undi_runs") == [10**6, 10**6]  # one per field
+    assert sizes("undi_runs") == [5 * 10**5, 5 * 10**5]  # one per field: the production size
 
     # the production size is its own input: it does not have to be in the list
     results, node = run_get_node(

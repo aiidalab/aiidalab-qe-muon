@@ -15,6 +15,18 @@ CONVERGENCE_QUANTITIES = {
 }
 
 
+def format_hdim(value) -> str:
+    """max_hdim as HTML: ``10<sup>6</sup>`` for a power of ten, ``5&middot;10<sup>5</sup>`` for 5e5, else the integer."""
+    value = int(value)
+    exponent = int(np.floor(np.log10(value)))
+    mantissa = value / 10**exponent
+    if np.isclose(mantissa, 1):
+        return f"10<sup>{exponent}</sup>"
+    if np.isclose(mantissa, round(mantissa)):
+        return f"{int(round(mantissa))}&middot;10<sup>{exponent}</sup>"
+    return str(value)
+
+
 def convergence_quantity(polarization, reference, kind: str = "P") -> np.ndarray:
     """Return the quantity to plot to check the convergence of ``polarization`` against ``reference``.
 

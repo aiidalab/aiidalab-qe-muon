@@ -8,7 +8,7 @@ from aiida.common.links import LinkType
 UNDI_CODE = "python-3.12-devbox"  # a `core.shell` python with undi: `aiidalab-qe-muon setup-python3` creates `python3-shell@localhost`
 
 # Small values, for a quick test (fields in mT, as in the app). The app uses [10**2, 10**4, 10**6] for the
-# convergence check and 10**6 for the production runs, which can take long.
+# convergence check and 5*10**5 for the production runs, which can take long.
 DEFAULT_FIELDS_MT = [0.0, 2.0]
 DEFAULT_MAX_HDIMS = [10**2, 10**3, 10**4]  # convergence check (the largest one is the reference)
 DEFAULT_MAX_HDIM = 10**4  # production runs

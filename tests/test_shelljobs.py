@@ -321,6 +321,68 @@ def test_job_runs_with_the_threads_and_the_precision_asked(code, structure_file)
     assert node.inputs.nodes.single_precision.value is False
 
 
+_submit_dirs = iter(range(1000))
+
+
+def _submit_script(inputs, tmp_path, monkeypatch):
+    """Dry run: the `_aiidasubmit.sh` that would be submitted to the scheduler (nothing is run nor stored)."""
+    from aiida.engine import run
+    from aiida.plugins import CalculationFactory
+
+    workdir = tmp_path / f"dry_run_{next(_submit_dirs)}"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    inputs = dict(inputs)
+    inputs["metadata"] = {**inputs["metadata"], "dry_run": True, "store_provenance": False}
+    run(CalculationFactory("core.shell"), **inputs)
+    (script,) = (workdir / "submit_test").glob("*/_aiidasubmit.sh")
+    return script.read_text()
+
+
+def _exported_threads(script):
+    """The values of `OMP_NUM_THREADS` exported by the script, in order (the last one is the one that counts)."""
+    import re
+
+    return [int(value) for value in re.findall(r"export OMP_NUM_THREADS=(\d+)", script)]
+
+
+@pytest.mark.parametrize(
+    ("resources", "threads"),
+    [
+        # what the app builds (`create_resource_config`): nodes, ntasks per node, cpus per task
+        ({"num_machines": 1, "num_mpiprocs_per_machine": 1, "num_cores_per_mpiproc": 6}, 6),
+        ({"num_machines": 1, "num_mpiprocs_per_machine": 2, "num_cores_per_mpiproc": 4}, 8),
+        ({"num_machines": 1, "num_mpiprocs_per_machine": 1}, 1),
+    ],
+)
+def test_the_submit_script_exports_the_threads_of_the_resources(
+    code, structure_file, tmp_path, monkeypatch, resources, threads
+):
+    """The export is really in the script of the job, before the command, for the UNDI and the Kubo-Toyabe jobs.
+
+    The direct scheduler also exports the cores per process in the header of the script: ours comes after it, so the
+    last export (the effective one) is the CPUs of the job (processes x cores).
+    """
+    for inputs in (
+        prepare_undi_run_inputs(structure_file, code, metadata={"options": {"resources": resources}}),
+        prepare_kt_inputs(structure_file, code, metadata={"options": {"resources": resources}}),
+    ):
+        script = _submit_script(inputs, tmp_path, monkeypatch)
+        assert _exported_threads(script)[-1] == threads, script
+        assert script.rindex("export OMP_NUM_THREADS") < script.index("'-m'"), script  # set before the command runs
+
+
+def test_the_submit_script_ends_with_the_explicit_value(code, structure_file, tmp_path, monkeypatch):
+    """`OMP_NUM_THREADS` in the options is the effective value (and we do not add another one after it)."""
+    inputs = prepare_undi_run_inputs(
+        structure_file, code,
+        metadata={"options": {"resources": {"num_machines": 1, "num_mpiprocs_per_machine": 1, "num_cores_per_mpiproc": 6},
+                              "prepend_text": "export OMP_NUM_THREADS=3"}},
+    )
+    script = _submit_script(inputs, tmp_path, monkeypatch)
+    assert _exported_threads(script)[-1] == 3, script
+
+
 def test_job_has_the_output_filename_the_app_reads(code, structure_file):
     """The app shows the log of a job from the `output_filename` attribute (it fails if there is none)."""
     results, node = run_job(prepare_undi_run_inputs(structure_file, code))

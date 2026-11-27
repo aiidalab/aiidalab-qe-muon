@@ -13,7 +13,7 @@ from aiidalab_qe.common.widgets import LoadingWidget
 from aiidalab_qe.common.infobox import InAppGuide
 
 from aiidalab_qe_muon.app.results.sub_mvc.undimodel import PolarizationModel
-from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity
+from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity, format_hdim
 
 class UndiPlotWidget(ipw.VBox):
     """_summary_
@@ -146,20 +146,20 @@ class UndiPlotWidget(ipw.VBox):
             
         else:
             
-            reference_hdim = int(np.log10(max(self._model.max_hdims)))
+            reference_hdim = max(self._model.max_hdims)
             production_hdim = self._model.production_max_hdim
-            if production_hdim is not None and int(np.log10(production_hdim)) == reference_hdim:
+            if production_hdim is not None and int(production_hdim) == int(reference_hdim):
                 reference_text = (
-                    f"max<sub>hdim</sub>=10<sup>{reference_hdim}</sup>, the value used in the 'Polarization data' plot: "
+                    f"max<sub>hdim</sub>={format_hdim(reference_hdim)}, the value used in the 'Polarization data' plot: "
                     "the analysis shows how far the smaller values are from it"
                 )
             elif production_hdim is not None:
                 reference_text = (
-                    f"max<sub>hdim</sub>=10<sup>{reference_hdim}</sup>, the largest one, "
-                    f"while the 'Polarization data' plot uses max<sub>hdim</sub>=10<sup>{int(np.log10(production_hdim))}</sup>"
+                    f"max<sub>hdim</sub>={format_hdim(reference_hdim)}, the largest one, "
+                    f"while the 'Polarization data' plot uses max<sub>hdim</sub>={format_hdim(production_hdim)}"
                 )
             else:
-                reference_text = f"max<sub>hdim</sub>=10<sup>{reference_hdim}</sup>, the largest one"
+                reference_text = f"max<sub>hdim</sub>={format_hdim(reference_hdim)}, the largest one"
             description = ipw.HTML(
                 f"""
                 This section allows you to examine the convergence with respect to the maximum Hilbert space dimension (max<sub>hdim</sub>),
@@ -242,7 +242,7 @@ class UndiPlotWidget(ipw.VBox):
                     index = self._model.max_hdims.index(value)
                     to_be_plotted = self._model.plotting_quantity
                     Bmod = self._model.muons[str(muon_index)].results[index][0]["B_ext"] * 1000  # mT
-                    label = f"max<sub>hdim</sub> = 10<sup>{int(np.log10(self._model.max_hdims[index]))}</sup>"
+                    label = f"max<sub>hdim</sub> = {format_hdim(self._model.max_hdims[index])}"
                     
                     ydata_highest = np.array(
                         self._model.muons[str(muon_index)].data["y"][field_direction][highest_index][f"signal_{direction}"]

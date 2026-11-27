@@ -7,7 +7,7 @@ import pytest
 from _stubs import fake_modules
 from numpy.testing import assert_allclose
 
-from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity
+from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity, format_hdim
 
 
 def test_numbers_of_the_report():
@@ -104,3 +104,18 @@ def test_widget_plots_the_quantity_of_the_label(undiwidget, kind, expected_y, yl
     assert len(widget.fig.data) == 2
     assert_allclose([list(trace.y) for trace in widget.fig.data], expected_y, atol=1e-12)
     assert widget.fig.layout.yaxis.title.text == ylabel
+
+
+@pytest.mark.parametrize(
+    ("value", "html"),
+    [
+        (100, "10<sup>2</sup>"),
+        (10**6, "10<sup>6</sup>"),
+        (5 * 10**5, "5&middot;10<sup>5</sup>"),
+        (1e4, "10<sup>4</sup>"),
+        (123456, "123456"),
+    ],
+)
+def test_format_hdim(value, html):
+    """5e5 was shown as 10^5 (the floor of its log10)."""
+    assert format_hdim(value) == html

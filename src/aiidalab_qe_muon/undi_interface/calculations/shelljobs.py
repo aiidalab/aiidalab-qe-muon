@@ -73,6 +73,23 @@ def parse_kt_results(dirpath: pathlib.Path) -> dict:
     return {} if results is None else {"results": orm.Dict(results)}
 
 
+def omp_threads(resources: dict | None) -> int:
+    """The number of OpenMP threads of a job: the CPUs it asks for.
+
+    The C++ part of ``undi`` is parallel with OpenMP, and the job runs the command once (it is not MPI), so the threads
+    are all the CPUs of the job: ``num_cpus`` (HyperQueue), or the MPI processes per machine times the cores per
+    process (the "ntasks" and "cpus per task" of the app). One thread if the resources do not tell.
+    """
+    resources = resources or {}
+    if "num_cpus" in resources:
+        return max(1, int(resources["num_cpus"]))
+    return max(1, int(resources.get("num_mpiprocs_per_machine", 1)) * int(resources.get("num_cores_per_mpiproc", 1)))
+
+
+def _sets_omp_threads(options: dict) -> bool:
+    return any("OMP_NUM_THREADS" in str(options.get(key) or "") for key in ("prepend_text", "custom_scheduler_commands"))
+
+
 def _prepare(code, arguments, nodes, results_filename, parser, metadata):
     from aiida_shell import ShellJob
     from aiida_shell.launch import prepare_shell_job_inputs
@@ -86,6 +103,11 @@ def _prepare(code, arguments, nodes, results_filename, parser, metadata):
     # reads that attribute of the job to show its log, and fails ("attribute `output_filename` does not exist") if it
     # is missing. Setting it to the same file changes nothing else.
     options.setdefault("output_filename", ShellJob.FILENAME_STDOUT)
+    # The OpenMP threads follow the CPUs of the job (all the cores of the machine, if not set, which can be more than
+    # the job has). An explicit `OMP_NUM_THREADS` in the options is respected.
+    if not _sets_omp_threads(options):
+        export = f"export OMP_NUM_THREADS={omp_threads(options.get('resources'))}"
+        options["prepend_text"] = "\n".join(filter(None, [options.get("prepend_text"), export]))
     # The file is only for the parser (it is not an `outputs` of the job: a missing one would hide the exit status of
     # the command, when it fails).
     options["additional_retrieve"] = [*options.get("additional_retrieve", []), results_filename]
@@ -109,12 +131,15 @@ def prepare_undi_run_inputs(
     convergence_check: bool = False,
     algorithm: str = "fast",
     angular_integration_steps: int = 7,
+    single_precision: bool = True,
     metadata: dict | None = None,
 ) -> dict:
     """Return the ``ShellJob`` inputs of one UNDI run: ``python -m undi``.
 
     :param structure_file: the ``SinglefileData`` with the structure (see :func:`structure_to_file`).
     :param code: the code of the python with ``undi``.
+    :param single_precision: run the C++ algorithm in single precision (``--single-precision``): about half the memory
+        and faster, with a small loss of accuracy.
     """
     arguments = [
         "-m",
@@ -131,6 +156,8 @@ def prepare_undi_run_inputs(
         "--angular-integration-steps",
         "{angular_integration_steps}",
     ]
+    if single_precision:
+        arguments.append("--single-precision")
     if convergence_check:
         arguments.append("--convergence-check")
 
@@ -141,6 +168,8 @@ def prepare_undi_run_inputs(
         "atom_as_muon": orm.Str(atom_as_muon),
         "algorithm": orm.Str(algorithm),
         "angular_integration_steps": orm.Int(angular_integration_steps),
+        # not an argument with a value (the flag is above): an input, to keep it in the provenance
+        "single_precision": orm.Bool(single_precision),
     }
     return _prepare(code, arguments, nodes, UNDI_RESULTS_FILENAME, parse_undi_results, metadata)
 

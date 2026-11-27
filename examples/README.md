@@ -64,6 +64,10 @@ On failure they print the work chain report and the reports of the failed calcul
 
 ## Notes
 
+- The UNDI jobs are not MPI: `--num-cpus` are the CPUs of each job and the OpenMP threads of undi (`OMP_NUM_THREADS`
+  follows them). UNDI runs in single precision (faster, a small loss of accuracy); `--double-precision` turns it off.
+  The output of every job starts with a line that tells which C++ module runs, with how many threads
+  (`[undi] C++ module fast_quantum (...); OpenMP threads: N ...`).
 - `--max-hdims` are the Hilbert-space dimensions of the convergence check (first site only, at zero field; the largest is
   the reference), and `--max-hdim` the one of the production runs at every field (not used by `analysis`). The app uses
   `10²`, `10⁴`, `10⁶` and `10⁶`; the examples default to smaller values (`10²`, `10³`, `10⁴` and `10⁴`) to run quickly.

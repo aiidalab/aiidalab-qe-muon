@@ -76,6 +76,12 @@ class ImplantMuonWorkChain(WorkChain):
             required=False,
             help="The max_dim of the polarization production runs, at every field. Default: 10**6.",
         )
+        spec.input(
+            "undi_single_precision",
+            valid_type=orm.Bool,
+            required=False,
+            help="Run the C++ algorithm of undi in single precision (faster, a small loss of accuracy). Default: True.",
+        )
         
         spec.expose_inputs(
             FindMuonWorkChain,
@@ -186,6 +192,7 @@ class ImplantMuonWorkChain(WorkChain):
         undi_fields=None,
         undi_max_hdims=None,
         undi_max_hdim=None,
+        undi_single_precision=None,
         protocol=None,
         enforce_defaults: bool = True,
         compute_findmuon: bool = True,
@@ -299,6 +306,9 @@ class ImplantMuonWorkChain(WorkChain):
 
         if undi_max_hdim and compute_polarization_undi:
             builder.undi_max_hdim = orm.Int(undi_max_hdim)
+
+        if undi_single_precision is not None and compute_polarization_undi:
+            builder.undi_single_precision = orm.Bool(undi_single_precision)
             
         builder.kind_names = orm.List(
             list(
@@ -413,6 +423,8 @@ class ImplantMuonWorkChain(WorkChain):
             inputs["max_hdims"] = self.inputs.undi_max_hdims
         if "undi_max_hdim" in self.inputs:
             inputs["max_hdim"] = self.inputs.undi_max_hdim
+        if "undi_single_precision" in self.inputs:
+            inputs["single_precision"] = self.inputs.undi_single_precision
 
         process = self.submit(MultiSitesWorkChain, **inputs)
         self.report(

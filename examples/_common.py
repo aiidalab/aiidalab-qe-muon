@@ -37,12 +37,14 @@ def cu_h_structure(site: str = "octahedral") -> orm.StructureData:
 
 
 def undi_task_metadata(num_cpus: int = 1, max_wallclock_seconds: int = 3600) -> dict:
-    """The `metadata` of every UNDI / Kubo-Toyabe shell job."""
+    """The `metadata` of every UNDI / Kubo-Toyabe shell job.
+
+    The jobs are not MPI: the CPUs are the OpenMP threads of undi (`OMP_NUM_THREADS` follows the resources).
+    """
     return {
         "options": {
-            "resources": {"num_machines": 1, "num_mpiprocs_per_machine": num_cpus},
+            "resources": {"num_machines": 1, "num_mpiprocs_per_machine": 1, "num_cores_per_mpiproc": num_cpus},
             "max_wallclock_seconds": max_wallclock_seconds,
-            "custom_scheduler_commands": "export OMP_NUM_THREADS=1",
         }
     }
 

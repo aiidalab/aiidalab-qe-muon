@@ -16,6 +16,7 @@ from aiida.common.links import LinkType
 from aiida.engine import run_get_node
 
 from aiidalab_qe_muon.undi_interface.calculations.shelljobs import (
+    omp_threads,
     parse_kt_results,
     parse_undi_results,
     prepare_kt_inputs,
@@ -27,7 +28,7 @@ pytest.importorskip("aiida_shell")
 
 UNDI_STAND_IN = textwrap.dedent(
     """
-    import argparse, json, sys
+    import argparse, json, os, sys
 
     parser = argparse.ArgumentParser()
     parser.add_argument("structure")
@@ -37,6 +38,7 @@ UNDI_STAND_IN = textwrap.dedent(
     parser.add_argument("--algorithm", default="fast")
     parser.add_argument("--angular-integration-steps", type=int, default=7)
     parser.add_argument("--convergence-check", action="store_true")
+    parser.add_argument("--single-precision", action="store_true")
     args = parser.parse_args()
 
     print("progress bar and warnings go to stderr", file=sys.stderr)
@@ -49,6 +51,7 @@ UNDI_STAND_IN = textwrap.dedent(
         "B_ext": args.Bmod, "max_hdim": args.max_hdim, "convergence_check": args.convergence_check,
         "atom_as_muon": args.atom_as_muon, "algorithm": args.algorithm,
         "angular_integration_steps": args.angular_integration_steps, "n_atoms": n_atoms,
+        "single_precision": args.single_precision, "omp_threads": os.environ.get("OMP_NUM_THREADS"),
         "t": [0.0, 1e-6], "signal_z_lf": [1.0, 0.5],
     }]
     json.dump(results, open("results.json", "w"))
@@ -149,9 +152,13 @@ def test_undi_inputs(code, structure_file):
     assert inputs["arguments"] == [
         "-m", "undi", "{structure}", "--Bmod", "{B_mod}", "--max-hdim", "{max_hdim}", "--atom-as-muon",
         "{atom_as_muon}", "--algorithm", "{algorithm}", "--angular-integration-steps", "{angular_integration_steps}",
+        "--single-precision",  # the default
     ]
     nodes = inputs["nodes"]
-    assert set(nodes) == {"structure", "B_mod", "max_hdim", "atom_as_muon", "algorithm", "angular_integration_steps"}
+    assert set(nodes) == {
+        "structure", "B_mod", "max_hdim", "atom_as_muon", "algorithm", "angular_integration_steps", "single_precision"
+    }
+    assert nodes["single_precision"].value is True
     assert nodes["structure"].pk == structure_file.pk
     assert (nodes["B_mod"].value, nodes["atom_as_muon"].value, nodes["algorithm"].value) == (0.002, "H", "fast")
     # the command line takes an integer: 1e4 must not become "10000.0"
@@ -169,6 +176,15 @@ def test_convergence_check_is_a_bare_flag(code, structure_file):
     assert "--convergence-check" not in off
 
 
+def test_single_precision_is_the_default_and_can_be_turned_off(code, structure_file):
+    single = prepare_undi_run_inputs(structure_file, code)
+    double = prepare_undi_run_inputs(structure_file, code, single_precision=False)
+    assert "--single-precision" in single["arguments"] and single["nodes"]["single_precision"].value is True
+    assert "--single-precision" not in double["arguments"] and double["nodes"]["single_precision"].value is False
+    # the flag is the only difference
+    assert [a for a in single["arguments"] if a != "--single-precision"] == double["arguments"]
+
+
 def test_stderr_is_redirected_unless_asked_otherwise(code, structure_file):
     """undi writes progress (tqdm) and warnings to stderr; a non-empty stderr would fail the job."""
     options = prepare_undi_run_inputs(structure_file, code, metadata={"options": {"max_wallclock_seconds": 60}})[
@@ -178,6 +194,7 @@ def test_stderr_is_redirected_unless_asked_otherwise(code, structure_file):
         "max_wallclock_seconds": 60,
         "redirect_stderr": True,
         "output_filename": "stdout",
+        "prepend_text": "export OMP_NUM_THREADS=1",  # no resources: one CPU
         "additional_retrieve": ["results.json"],
     }
     options = prepare_kt_inputs(structure_file, code, metadata={"options": {"redirect_stderr": False}})["metadata"][
@@ -187,8 +204,48 @@ def test_stderr_is_redirected_unless_asked_otherwise(code, structure_file):
     assert prepare_kt_inputs(structure_file, code)["metadata"]["options"] == {
         "redirect_stderr": True,
         "output_filename": "stdout",
+        "prepend_text": "export OMP_NUM_THREADS=1",
         "additional_retrieve": ["KT.json"],
     }
+
+
+# ---- the OpenMP threads follow the CPUs of the job
+
+
+@pytest.mark.parametrize(
+    "resources, threads",
+    [
+        (None, 1),
+        ({}, 1),
+        ({"num_machines": 1}, 1),
+        ({"num_machines": 1, "num_mpiprocs_per_machine": 1, "num_cores_per_mpiproc": 6}, 6),  # `cpus per task` of the app
+        ({"num_machines": 1, "num_mpiprocs_per_machine": 2, "num_cores_per_mpiproc": 4}, 8),
+        ({"num_machines": 3, "num_mpiprocs_per_machine": 2}, 2),  # the command runs on one machine
+        ({"num_cpus": 12}, 12),  # HyperQueue
+    ],
+)
+def test_omp_threads_are_the_cpus_of_the_job(resources, threads):
+    assert omp_threads(resources) == threads
+
+
+def test_omp_threads_are_exported_from_the_resources(code, structure_file):
+    options = prepare_undi_run_inputs(
+        structure_file, code, metadata={"options": {"resources": {"num_cpus": 4}, "prepend_text": "module load x"}}
+    )["metadata"]["options"]
+    # the text of the user stays, the threads are added
+    assert options["prepend_text"] == "module load x\nexport OMP_NUM_THREADS=4"
+    assert prepare_kt_inputs(structure_file, code, metadata={"options": {"resources": {"num_cpus": 4}}})["metadata"][
+        "options"
+    ]["prepend_text"] == "export OMP_NUM_THREADS=4"
+
+
+@pytest.mark.parametrize("key", ["prepend_text", "custom_scheduler_commands"])
+def test_an_explicit_omp_num_threads_is_respected(code, structure_file, key):
+    options = prepare_undi_run_inputs(
+        structure_file, code, metadata={"options": {"resources": {"num_cpus": 4}, key: "export OMP_NUM_THREADS=2"}}
+    )["metadata"]["options"]
+    assert options[key] == "export OMP_NUM_THREADS=2"
+    assert "OMP_NUM_THREADS" not in options.get("prepend_text", "").replace("export OMP_NUM_THREADS=2", "")
 
 
 def test_kt_inputs(code, structure_file):
@@ -245,8 +302,23 @@ def test_undi_job_runs_the_command_line(code, structure_file):
     assert (cluster["B_ext"], cluster["max_hdim"], cluster["convergence_check"]) == (0.002, 10000, True)
     assert (cluster["atom_as_muon"], cluster["algorithm"], cluster["angular_integration_steps"]) == ("H", "fast", 5)
     assert cluster["n_atoms"] == 2  # the structure file, with the muon
+    assert cluster["single_precision"] is True and cluster["omp_threads"] == "1"
     # what the results viewer reads
     assert node.inputs.nodes.B_mod.value == 0.002 and node.inputs.nodes.max_hdim.value == 10000
+
+
+def test_job_runs_with_the_threads_and_the_precision_asked(code, structure_file):
+    """`OMP_NUM_THREADS` is the CPUs of the job, in the environment of the command; `--single-precision` can be off."""
+    results, node = run_job(
+        prepare_undi_run_inputs(
+            structure_file, code, single_precision=False,
+            metadata={"options": {"resources": {"num_machines": 1, "num_mpiprocs_per_machine": 1, "num_cores_per_mpiproc": 3}}},
+        )
+    )
+    assert node.is_finished_ok, node.exit_message
+    (cluster,) = results["results"].get_list()
+    assert cluster["omp_threads"] == "3" and cluster["single_precision"] is False
+    assert node.inputs.nodes.single_precision.value is False
 
 
 def test_job_has_the_output_filename_the_app_reads(code, structure_file):

@@ -36,9 +36,9 @@ DEFAULT_MAX_HDIMS = [10**2, 10**4, 10**6]
 # ... and the one of the production runs, at every field.
 DEFAULT_MAX_HDIM = 10**6
 
-DEFAULT_TASK_METADATA = {
-    "options": {"custom_scheduler_commands": "export OMP_NUM_THREADS=1"}
-}
+# The metadata of the jobs, if none is given. The OpenMP threads of undi follow the resources of the jobs (see
+# `shelljobs.omp_threads`): one CPU, so one thread, if the resources are not given.
+DEFAULT_TASK_METADATA: dict = {}
 
 
 def _get_shelljob_class():
@@ -119,12 +119,19 @@ def _add_undi_inputs(spec, *, B_mods, max_hdims, production_max_hdim=None):
         help="The number of steps of the angular integration.",
     )
     spec.input(
+        "single_precision",
+        valid_type=orm.Bool,
+        default=lambda: orm.Bool(True),
+        help="Run the C++ algorithm of undi in single precision: about half the memory and faster, "
+        "with a small loss of accuracy.",
+    )
+    spec.input(
         "task_metadata",
         valid_type=dict,
         non_db=True,
         required=False,
-        help="The `metadata` (e.g. `options`) of every `ShellJob`. "
-        "Defaults to `DEFAULT_TASK_METADATA` (single OpenMP thread).",
+        help="The `metadata` (e.g. `options`, `resources`) of every `ShellJob`. The OpenMP threads of undi are the "
+        "CPUs of the `resources` (unless `OMP_NUM_THREADS` is set in the options).",
     )
 
 
@@ -179,6 +186,7 @@ class UndiMultiAnalysisWorkChain(WorkChain):
                     convergence_check=self.inputs.convergence_check.value,
                     algorithm=self.inputs.algorithm.value,
                     angular_integration_steps=self.inputs.angular_integration_steps.value,
+                    single_precision=self.inputs.single_precision.value,
                     metadata=self.ctx.task_metadata,
                 )
                 future = self.submit(ShellJob, **_with_call_link_label(inputs, label))
@@ -267,6 +275,7 @@ class UndiAndKuboToyabeWorkChain(WorkChain):
             "atom_as_muon": self.inputs.atom_as_muon,
             "algorithm": self.inputs.algorithm,
             "angular_integration_steps": self.inputs.angular_integration_steps,
+            "single_precision": self.inputs.single_precision,
             "task_metadata": self.ctx.task_metadata,
         }
         inputs.update(overrides)
@@ -384,6 +393,7 @@ class MultiSitesWorkChain(WorkChain):
                 atom_as_muon=self.inputs.atom_as_muon,
                 algorithm=self.inputs.algorithm,
                 angular_integration_steps=self.inputs.angular_integration_steps,
+                single_precision=self.inputs.single_precision,
                 task_metadata=self.ctx.task_metadata,
                 convergence_check=orm.Bool(position == 0),
                 metadata={"call_link_label": f"polarization_structure_{site_index}"},

@@ -56,7 +56,12 @@ def parse_args(argv=None):
         help="maximum Hilbert-space dimension of the production runs, at every field; not used by "
         "`analysis` (default: %(default)s)",
     )
-    parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per job (default: %(default)s)")
+    parser.add_argument(
+        "--num-cpus", type=int, default=1, help="CPUs of each job, used as OpenMP threads by undi (default: %(default)s)"
+    )
+    parser.add_argument(
+        "--double-precision", action="store_true", help="run undi in double precision (default: single precision)"
+    )
     parser.add_argument("--submit", action="store_true", help="submit to the daemon instead of running here")
     parser.add_argument("--show", type=int, metavar="PK", help="print the results of an existing work chain and exit")
     args = parser.parse_args(argv)
@@ -76,6 +81,7 @@ def build_inputs(args, code):
         "B_mods": orm.List([field * 1e-3 for field in args.fields]),
         "max_hdims": orm.List(args.max_hdims),
         "task_metadata": undi_task_metadata(args.num_cpus),
+        "single_precision": orm.Bool(not args.double_precision),
     }
     if args.chain == "multisites":
         # keys are the site indices; the convergence check is run for the first one only.

@@ -48,9 +48,10 @@ class FakeShellJob(WorkChain):
 @pytest.fixture
 def fake_shelljob(monkeypatch):
     """Replace the ``ShellJob`` and the preparation of its inputs by the fake."""
-    state = {"fail_B_mod": None}
+    state = {"fail_B_mod": None, "precisions": []}
 
     def prepare_undi_run_inputs(structure_file, code, B_mod, max_hdim, metadata=None, **kwargs):
+        state["precisions"].append(kwargs.get("single_precision"))
         fail = state["fail_B_mod"] is not None and B_mod == state["fail_B_mod"]
         inputs = {
             "nodes": {"structure": structure_file, "B_mod": orm.Float(B_mod), "max_hdim": orm.Int(int(max_hdim))},
@@ -104,6 +105,7 @@ def test_specs():
 
     # only the chains that run the production have `max_hdim`, the other one runs what it is given
     assert "max_hdim" not in undi.inputs
+    assert "single_precision" in undi.inputs
 
     kt = UndiAndKuboToyabeWorkChain.spec()
     assert set(kt.outputs["results"]) == {"KT_task", "undi_conv_task", "undi_task"}
@@ -183,6 +185,24 @@ def test_default_sizes(fake_shelljob, code, structure):
         max_hdim=orm.Int(32),
     )
     assert [r["max_hdim"] for r in results["results"]["undi_task"]["iter_0"].get_list()] == [32.0]
+
+
+@pytest.mark.parametrize("given, expected", [(None, True), (True, True), (False, False)])
+def test_single_precision_reaches_every_undi_job(fake_shelljob, code, structure, given, expected):
+    """Single precision by default, in all the jobs of all the sites (convergence check and production)."""
+    inputs = {} if given is None else {"single_precision": orm.Bool(given)}
+    _, node = run_get_node(
+        MultiSitesWorkChain,
+        structure_group={"0": structure, "1": structure},
+        code=code,
+        B_mods=orm.List([0.0, 1e-3]),
+        max_hdims=orm.List([4, 16]),
+        **inputs,
+    )
+    assert node.is_finished_ok
+    # production: 2 fields x 2 sites; convergence check (first site only): 2 sizes at zero field
+    assert len(fake_shelljob["precisions"]) == 2 * 2 + 2
+    assert set(fake_shelljob["precisions"]) == {expected}
 
 
 def test_undi_and_kubo_toyabe_without_convergence_check(fake_shelljob, code, structure):
@@ -270,12 +290,14 @@ def test_implant_muon_polarization_only(fake_shelljob, code, monkeypatch):
         undi_fields=orm.List([0.0, 1e-3]),
         undi_max_hdims=orm.List([4, 16]),
         undi_max_hdim=orm.Int(16),
+        undi_single_precision=orm.Bool(False),
     )
     assert node.is_finished_ok
     assert labels_of(node) == ["MultiSiteUndiPolarizationAndKT"]
     multisites = node.called[0]
     assert multisites.process_label == "MultiSitesWorkChain"
     assert multisites.inputs.max_hdim.value == 16  # forwarded from `undi_max_hdim`
+    assert multisites.inputs.single_precision.value is False  # forwarded from `undi_single_precision`
     assert labels_of(multisites) == ["polarization_structure_0"]
     assert isinstance(results["polarization"], orm.Dict)
     assert results["polarization"].pk == multisites.outputs.results["site_0"]["KT_task"].pk

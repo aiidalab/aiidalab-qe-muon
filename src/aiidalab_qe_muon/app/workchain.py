@@ -140,8 +140,7 @@ def get_builder(codes, structure, parameters):
     overrides["base_relax"]["pw"]["metadata"] = create_resource_config(codes.get("pw_muons"))
     
     undi_metadata = create_resource_config(codes.get("undi_code"))
-    #undi_metadata["options"]["prepend_text"] =  \
-    #    f'export OMP_NUM_THREADS={undi_metadata["options"]["resources"]["num_cores_per_mpiproc"]}'
+    # (the OpenMP threads of undi follow the resources: see `undi_interface/calculations/shelljobs.py`)
     
     if compute_polarization_undi:
         undi_fields = list(set(parameters["muonic"].pop("undi_fields", [])))

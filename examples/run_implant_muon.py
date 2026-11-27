@@ -59,7 +59,15 @@ def parse_args(argv=None):
         default=DEFAULT_MAX_HDIM,
         help="maximum Hilbert-space dimension of the production runs, at every field (default: %(default)s)",
     )
-    parser.add_argument("--num-cpus", type=int, default=1, help="MPI processes per pw.x / undi job (default: %(default)s)")
+    parser.add_argument(
+        "--num-cpus",
+        type=int,
+        default=1,
+        help="MPI processes of pw.x, and CPUs (OpenMP threads of undi) of each undi job (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--double-precision", action="store_true", help="run undi in double precision (default: single precision)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="build and validate the builder, do not launch")
     parser.add_argument("--submit", action="store_true", help="submit to the daemon instead of running here")
     parser.add_argument("--show", type=int, metavar="PK", help="print the results of an existing work chain and exit")
@@ -97,6 +105,7 @@ def get_builder(args, pw_code, pp_code, undi_code):
         undi_fields=[field * 1e-3 for field in args.fields],  # mT -> T
         undi_max_hdims=args.max_hdims,
         undi_max_hdim=args.max_hdim,
+        undi_single_precision=not args.double_precision,
         # a minimal supercell, for a quick test: increase it (or pass None to converge it) for real results.
         sc_matrix=[[1, 0, 0], [0, 1, 0], [0, 0, 1]],
         mu_spacing=1.5,
@@ -141,6 +150,7 @@ def main(argv=None):
     print(f"  undi_fields [T]: {builder.undi_fields.get_list()}")
     print(f"  undi_max_hdims (convergence check): {builder.undi_max_hdims.get_list()}")
     print(f"  undi_max_hdim (production): {builder.undi_max_hdim.value}")
+    print(f"  undi_single_precision: {builder.undi_single_precision.value}")
     error = validate(builder)
     print(f"  validation: {'OK' if error is None else error}")
 

@@ -174,13 +174,19 @@ def test_stderr_is_redirected_unless_asked_otherwise(code, structure_file):
     options = prepare_undi_run_inputs(structure_file, code, metadata={"options": {"max_wallclock_seconds": 60}})[
         "metadata"
     ]["options"]
-    assert options == {"max_wallclock_seconds": 60, "redirect_stderr": True, "additional_retrieve": ["results.json"]}
+    assert options == {
+        "max_wallclock_seconds": 60,
+        "redirect_stderr": True,
+        "output_filename": "stdout",
+        "additional_retrieve": ["results.json"],
+    }
     options = prepare_kt_inputs(structure_file, code, metadata={"options": {"redirect_stderr": False}})["metadata"][
         "options"
     ]
     assert options["redirect_stderr"] is False
     assert prepare_kt_inputs(structure_file, code)["metadata"]["options"] == {
         "redirect_stderr": True,
+        "output_filename": "stdout",
         "additional_retrieve": ["KT.json"],
     }
 
@@ -241,6 +247,15 @@ def test_undi_job_runs_the_command_line(code, structure_file):
     assert cluster["n_atoms"] == 2  # the structure file, with the muon
     # what the results viewer reads
     assert node.inputs.nodes.B_mod.value == 0.002 and node.inputs.nodes.max_hdim.value == 10000
+
+
+def test_job_has_the_output_filename_the_app_reads(code, structure_file):
+    """The app shows the log of a job from the `output_filename` attribute (it fails if there is none)."""
+    results, node = run_job(prepare_undi_run_inputs(structure_file, code))
+    assert node.is_finished_ok, node.exit_message
+    assert node.base.attributes.get("output_filename") == "stdout"  # what the app does, without a default
+    # the output is the same file as before, with stderr in it
+    assert "progress bar and warnings go to stderr" in results["stdout"].get_content()
 
 
 def test_failed_command_fails_the_job(code, structure_file):

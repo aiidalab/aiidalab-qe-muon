@@ -74,6 +74,7 @@ def parse_kt_results(dirpath: pathlib.Path) -> dict:
 
 
 def _prepare(code, arguments, nodes, results_filename, parser, metadata):
+    from aiida_shell import ShellJob
     from aiida_shell.launch import prepare_shell_job_inputs
 
     metadata = dict(metadata or {})
@@ -81,6 +82,10 @@ def _prepare(code, arguments, nodes, results_filename, parser, metadata):
     # `undi` writes progress (tqdm) and warnings to stderr: with the default, any of them would fail the job.
     # The exit status of the command is what tells if it failed.
     options.setdefault("redirect_stderr", True)
+    # `aiida-shell` writes the output to `stdout` by default, without setting the `output_filename` option. The app
+    # reads that attribute of the job to show its log, and fails ("attribute `output_filename` does not exist") if it
+    # is missing. Setting it to the same file changes nothing else.
+    options.setdefault("output_filename", ShellJob.FILENAME_STDOUT)
     # The file is only for the parser (it is not an `outputs` of the job: a missing one would hide the exit status of
     # the command, when it fails).
     options["additional_retrieve"] = [*options.get("additional_retrieve", []), results_filename]

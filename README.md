@@ -17,8 +17,9 @@ The polarization is computed by running the command line of [undi](https://undi.
 (`python -m undi` and `python -m undi.kubo_toyabe`) as [aiida-shell](https://aiida-shell.readthedocs.io) jobs. They need a
 `python` code, with the `core.shell` plugin, whose environment has `undi` installed (with its `undi` extra: `ase`, `tqdm`).
 
-On the local computer, to set up the code with the python of the current environment (it is labelled
-`python3-shell@localhost`, so it does not clash with the `python3` code of the former `aiida-pythonjob` version):
+On the local computer, to set up the code with the python of the environment that runs the command (the one with `undi`;
+it is labelled `python3-shell@localhost`, so it does not clash with the `python3` code of the former `aiida-pythonjob`
+version; use `--label` and `--computer` for other names):
 
 ```shell
 aiidalab-qe-muon setup-python3

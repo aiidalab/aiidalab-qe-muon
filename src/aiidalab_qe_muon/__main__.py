@@ -1,11 +1,11 @@
-from aiida.common.exceptions import NotExistent
 import os
-import subprocess
+import sys
 from pathlib import Path
-from aiida.orm import load_code
-from aiida import load_profile
-import shutil
+
 import click
+from aiida import load_profile
+from aiida.common.exceptions import MissingEntryPointError, NotExistent
+from aiida.orm import InstalledCode, load_code, load_computer
 
 """
 Automatic installation of the code that runs undi: the python of this environment, as a `core.shell` code
@@ -15,6 +15,9 @@ Automatic installation of the code that runs undi: the python of this environmen
 The python needs `undi[undi]` (and its dependencies) installed. So we only setup in AiiDA.
 """
 
+CODE_LABEL = "python3-shell"
+COMPUTER_LABEL = "localhost"
+
 
 @click.group()
 def cli():
@@ -22,40 +25,54 @@ def cli():
 
 
 @cli.command(help="Setup python3-shell@localhost in the current AiiDA database.")
-def setup_python3():
-    load_profile()
-    try:
-        load_code("python3-shell@localhost")
-    except NotExistent:
-        # Use shutil.which to find the path of the python executable
-        python_path = shutil.which("python3")
-        if not python_path:
-            raise FileNotFoundError("python3 code is not found in PATH")
-        # Construct the command as a list of arguments
-        command = [
-            "verdi",
-            "code",
-            "create",
-            "core.code.installed",
-            "--non-interactive",
-            "--label",
-            "python3-shell",
-            "--default-calc-job-plugin",
-            "core.shell",
-            "--computer",
-            "localhost",
-            "--filepath-executable",
-            python_path,
-        ]
+@click.option("--label", default=CODE_LABEL, show_default=True, help="Label of the code.")
+@click.option("--computer", default=COMPUTER_LABEL, show_default=True, help="Label of the computer.")
+def setup_python3(label, computer):
+    """Create the code of the python of this environment, as `core.shell` code.
 
-        # Use subprocess.run to run the command
-        subprocess.run(command, check=True)
+    It uses `sys.executable`, i.e. the python that runs this command (the one of the environment where the plugin and
+    `undi` are installed), and not the first `python3` of the PATH. The code is created through the AiiDA API: nothing
+    depends on `verdi` being in the PATH of the process that runs this command (the plugin manager of the app).
+    """
+    load_profile()
+    identifier = f"{label}@{computer}"
+    try:
+        load_code(identifier)
+    except NotExistent:
+        pass
     else:
-        print("Code python3-shell@localhost is already installed! Nothing to do here.")
+        click.echo(f"Code {identifier} is already installed! Nothing to do here.")
+        return
+
+    from aiida.plugins import CalculationFactory
+
+    try:
+        CalculationFactory("core.shell")
+    except MissingEntryPointError as error:
+        raise click.ClickException(
+            "The `core.shell` calculation is not available: install `aiida-shell` in this environment "
+            f"({sys.executable} -m pip install aiida-shell)."
+        ) from error
+
+    try:
+        aiida_computer = load_computer(computer)
+    except NotExistent as error:
+        raise click.ClickException(
+            f"The computer `{computer}` does not exist in this AiiDA profile: use `--computer` (see `verdi computer list`)."
+        ) from error
+
+    InstalledCode(
+        label=label,
+        computer=aiida_computer,
+        filepath_executable=sys.executable,
+        default_calc_job_plugin="core.shell",
+        description="Python (with undi) to run the UNDI and Kubo-Toyabe calculations, through aiida-shell.",
+    ).store()
+    click.echo(f"Code {identifier} created, with the python of this environment: {sys.executable}")
 
 
 @cli.command(help="Verify the python3-shell@localhost post-install setup.")
-@click.option("-p", "--profile", default="default", help="AiiDA profile name.")
+@click.option("-p", "--profile", default=None, help="AiiDA profile name (default: the default profile).")
 def verify_post_install(profile):
     load_profile(profile)
     try:

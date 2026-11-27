@@ -46,6 +46,20 @@ class MuonConfigurationSettingPanel(
             "structure_uuid",
         )
         
+    def _update_magmoms_display(self, _=None):
+        """Fill the table of the magnetic moments, shown only when the structure has any."""
+        from aiidalab_qe_muon.utils.magnetism import magmoms_table_html
+
+        model = self._model
+        self.magmoms_box.layout.display = "block" if model.has_magmoms else "none"
+        sites = model.input_structure.sites if model.input_structure else []
+        self.magmoms_table.value = magmoms_table_html(
+            [site.kind_name for site in sites],
+            model.magmoms,
+            model.magmoms_collinear,
+            model.magmoms_collinear_error,
+        )
+
     def render(self):
         if self.rendered:
             return
@@ -61,7 +75,7 @@ class MuonConfigurationSettingPanel(
             Computing only the polarization requires the muon (H atom) already placed in the structure as last site. 
             Supercell size and muon stopping sites are computed by means of the <b><a href="https://positivemuon.github.io/aiida-muon/"
             target="_blank">aiida-muon</b></a> plugin (<a href="https://doi.org/10.1039/D4DD00314D"
-            target="_blank">Onuorah et al., Digital Discovery, 2025</a>). The polarization is computed via the <b><a href="https://undi.readthedocs.io/en/latest/index.html"
+            target="_blank">Onuorah, Bonacci et al., Digital Discovery, 2025</a>). The polarization is computed via the <b><a href="https://undi.readthedocs.io/en/latest/index.html"
             target="_blank">UNDI</b></a> package (<a href="https://doi.org/10.1016/j.cpc.2020.107719"
             target="_blank">Bonfà et al., Comput. Phys. Commun. 260, 107719, 2021</a>), using the method by Celio
             (<a href="https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.56.2720"target="_blank">Celio, Phys. Rev. Lett. 56, 2720, 1986</a>), and considering only the muon-nuclear interactions.
@@ -105,7 +119,7 @@ class MuonConfigurationSettingPanel(
         self.compute_findmuon.observe(self._on_compute_findmuon_change, "value")
         
         self.compute_polarization_undi = ipw.Checkbox(
-            description="""Compute polarization (only &mu;-nuclei interactions) """,
+            description="""Compute polarization (only μ-nuclei interactions) """,
             indent=False,
             value=self._model.compute_polarization_undi,
             tooltip="Compute the compute polarization for muon resting site(s).",
@@ -152,7 +166,7 @@ class MuonConfigurationSettingPanel(
                 """,
         )
         self.use_defaults = ipw.Checkbox(
-            description="Use default  DFT+&mu; settings",
+            description="Use default DFT+μ settings",
             indent=False,
             value=True,
             tooltip="Use the default settings for the workflow.",
@@ -216,37 +230,18 @@ class MuonConfigurationSettingPanel(
         #     info="""&#8613; Non-collinear magnetic calculation<br>Enable non-collinear spin treatment.
         #         """,
         # )
-        def _format_magmoms(magmoms):
-            if not magmoms:
-                return (
-                    "<span style='color:grey;font-style:italic;'>No magnetic moments found in structure extras.</span>"
-                )
-            sites = self._model.input_structure.sites if self._model.input_structure else []
-            rows = "".join(
-                "<tr><td style='padding:1px 6px;'>{}</td><td style='padding:1px 6px;'>{}</td>"
-                "<td style='padding:1px 6px;'>{:.3f}</td><td style='padding:1px 6px;'>{:.3f}</td><td style='padding:1px 6px;'>{:.3f}</td></tr>".format(
-                    i, sites[i].kind_name if i < len(sites) else "",
-                    m[0], m[1], m[2],
-                )
-                for i, m in enumerate(magmoms)
-            )
-            return (
-                "<b>Magnetic moments from structure (e.g. mcif):</b> "
-                "<span style='color:grey;font-size:0.85em;'>These can be overridden via <i>Initial magnetic moments</i> "
-                "in the <b>Magnetism</b> tab of the Advanced settings panel.</span><br>"
-                "<table style='font-size:0.85em;border-collapse:collapse;'>"
-                "<tr><th style='padding:1px 6px;'>Site</th><th>Kind</th>"
-                "<th>mx (μ<sub>B</sub>)</th><th>my</th><th>mz</th></tr>"
-                + rows
-                + "</table>"
-            )
-
-        self.magmoms_display = ipw.HTML(value=_format_magmoms(self._model.magmoms))
-        ipw.dlink(
-            (self._model, "magmoms"),
-            (self.magmoms_display, "value"),
-            _format_magmoms,
+        self.magmoms_warning = ipw.HTML(
+            """<div class="alert alert-warning" style="margin: 5px 0;">
+            <b>Warning:</b> the structure carries magnetic moments (e.g. from an mcif). They are used in the muon simulations,
+            after being made collinear (see the table below). <b>They are overridden</b> if you set the
+            <i>Initial magnetic moments</i> in the <i>Magnetism</i> tab of the <i>Advanced settings</i>.
+            </div>"""
         )
+        self.magmoms_table = ipw.HTML()
+        self.magmoms_box = ipw.VBox([self.magmoms_warning, self.magmoms_table])
+        self._update_magmoms_display()
+        for trait in ("magmoms", "magmoms_collinear", "magmoms_collinear_error", "has_magmoms"):
+            self._model.observe(self._update_magmoms_display, trait)
 
         # TODO: noncollinear feature is not yet fully understood – restore when ready
         # self.noncollinear_box = ipw.VBox([
@@ -285,16 +280,17 @@ class MuonConfigurationSettingPanel(
             description="Activate monitors",
             indent=False,
             value=self._model.activate_monitors,
-            tooltip="Attach aiida-monitor to every PwBaseWorkChain relaxation step (requires aiida-monitor to be installed).",
+            tooltip="Attach the quantumespresso.accuracy_stuck monitor (from aiida-quantumespresso) to every PwBaseWorkChain relaxation step.",
         )
         ipw.link(
             (self.activate_monitors, "value"),
             (self._model, "activate_monitors"),
         )
         self.activate_monitors_help = SettingsInfoBoxWidget(
-            info="""&#8613; Activate monitors<br>When enabled and <code>aiida-monitor</code> is installed, the
-            <code>aiida_monitor.default_monitor</code> is automatically attached to every relaxation step.
-            Disable this if the entry point is not available in your environment.
+            info="""&#8613; Activate monitors<br>When enabled, the <code>quantumespresso.accuracy_stuck</code> monitor, provided by
+            <code>aiida-quantumespresso</code> (already installed with the app, nothing else is needed), is automatically attached to every
+            relaxation step: it stops a <code>pw.x</code> run whose SCF accuracy has stopped improving, so that the work chain can
+            handle it instead of wasting the whole wall time.
                 """,
         )
         self.activate_monitors_box = ipw.VBox([
@@ -646,7 +642,7 @@ class MuonConfigurationSettingPanel(
             ),
             self.use_defaults_box,
             self.compute_gamma_pre_relax_box,
-            self.magmoms_display,
+            self.magmoms_box,
             # self.noncollinear_box,  # TODO: noncollinear not yet ready
             self.pre_clustering_box,
             self.activate_monitors_box,

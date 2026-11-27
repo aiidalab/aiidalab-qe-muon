@@ -25,8 +25,8 @@ class MuonResourceSettingsModel(PluginResourceSettingsModel):
                 ),
                 "undi_code": CodeModel(
                     name="python",
-                    description="Python code for polarization calculation",
-                    default_calc_job_plugin="pythonjob.pythonjob",
+                    description="Python (with undi) for polarization calculation",
+                    default_calc_job_plugin="core.shell",
                 ),
             },
         )

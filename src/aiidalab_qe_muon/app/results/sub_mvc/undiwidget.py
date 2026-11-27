@@ -13,6 +13,7 @@ from aiidalab_qe.common.widgets import LoadingWidget
 from aiidalab_qe.common.infobox import InAppGuide
 
 from aiidalab_qe_muon.app.results.sub_mvc.undimodel import PolarizationModel
+from aiidalab_qe_muon.utils.convergence import CONVERGENCE_QUANTITIES, convergence_quantity, format_hdim
 
 class UndiPlotWidget(ipw.VBox):
     """_summary_
@@ -145,15 +146,27 @@ class UndiPlotWidget(ipw.VBox):
             
         else:
             
-            used_hdim = int(np.log10(self._model.max_hdims[-2]))
+            reference_hdim = max(self._model.max_hdims)
+            production_hdim = self._model.production_max_hdim
+            if production_hdim is not None and int(production_hdim) == int(reference_hdim):
+                reference_text = (
+                    f"max<sub>hdim</sub>={format_hdim(reference_hdim)}, the value used in the 'Polarization data' plot: "
+                    "the analysis shows how far the smaller values are from it"
+                )
+            elif production_hdim is not None:
+                reference_text = (
+                    f"max<sub>hdim</sub>={format_hdim(reference_hdim)}, the largest one, "
+                    f"while the 'Polarization data' plot uses max<sub>hdim</sub>={format_hdim(production_hdim)}"
+                )
+            else:
+                reference_text = f"max<sub>hdim</sub>={format_hdim(reference_hdim)}, the largest one"
             description = ipw.HTML(
                 f"""
                 This section allows you to examine the convergence with respect to the maximum Hilbert space dimension (max<sub>hdim</sub>),
                 which is used to construct the Hamiltonian for muon-nuclei interactions. For more details, please refer to the 
                 <a href="https://undi.readthedocs.io/en/latest/examples/auto.html#approximations" target="_blank">documentation</a>. <br>
                 <ul>
-                    <li> A reference polarization P<sub>r</sub>(t) is computed using a max<sub>hdim</sub> larger than the
-                    value used in the 'Polarization data' plot (max<sub>hdim</sub>=10<sup>{used_hdim}</sup>); </li>
+                    <li> A reference polarization P<sub>r</sub>(t) is computed using {reference_text}; </li>
                 </ul>
                 """
             )
@@ -162,7 +175,7 @@ class UndiPlotWidget(ipw.VBox):
                 options=[
                     ("P(t)", "P"),
                     ("ΔP(t) = P(t) - Pᵣ(t)", "deltaP"),
-                    ("100*ΔP(t)/Pᵣ(t)", "deltaP_rel"),
+                    ("100·ΔP(t)/Pᵣ(t) (%)", "deltaP_rel"),
                 ],
                 value="P",
             )
@@ -229,7 +242,7 @@ class UndiPlotWidget(ipw.VBox):
                     index = self._model.max_hdims.index(value)
                     to_be_plotted = self._model.plotting_quantity
                     Bmod = self._model.muons[str(muon_index)].results[index][0]["B_ext"] * 1000  # mT
-                    label = f"max<sub>hdim</sub> = 10<sup>{int(np.log10(self._model.max_hdims[index]))}</sup>"
+                    label = f"max<sub>hdim</sub> = {format_hdim(self._model.max_hdims[index])}"
                     
                     ydata_highest = np.array(
                         self._model.muons[str(muon_index)].data["y"][field_direction][highest_index][f"signal_{direction}"]
@@ -238,14 +251,10 @@ class UndiPlotWidget(ipw.VBox):
                     ydata = np.array(
                         self._model.muons[str(muon_index)].data["y"][field_direction][index][f"signal_{direction}"]
                     )
-                    ylabel = "P(t)"
-                    if "delta" in to_be_plotted:
-                        ydata = ydata_highest - ydata
-                        ylabel = "ΔP(t)"
-                    if "rel" in to_be_plotted:
-                        ydata /= 100 * ydata_highest
-                        ylabel = "Δ<sub>%</sub>P(t)"
-                    title = None  # "$$\Delta P(t) = P_{max\_hdim=10^9}(t) - P(t)$$"
+                    # ΔP = P - P_r, with P_r computed with the largest max_hdim (see the toggle button labels)
+                    ydata = convergence_quantity(ydata, ydata_highest, to_be_plotted)
+                    ylabel = CONVERGENCE_QUANTITIES[to_be_plotted]
+                    title = None
 
                 self.fig.add_trace(
                     go.Scatter(

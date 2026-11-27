@@ -6,9 +6,9 @@ from aiida import orm
 from aiida.plugins import WorkflowFactory
 from aiida.engine import if_
 
-from aiida_workgraph.engine.workgraph import WorkGraphEngine
-from aiidalab_qe_muon.undi_interface.workflows.workgraphs import (
-    MultiSites,
+from aiidalab_qe_muon.undi_interface.workflows.workchains import (
+    MultiSitesWorkChain,
+    production_max_hdim,
 )
 
 from aiida_quantumespresso.data.hubbard_structure import HubbardStructureData
@@ -68,7 +68,21 @@ class ImplantMuonWorkChain(WorkChain):
             "undi_max_hdims",
             valid_type= orm.List,
             required=False,
-            help="The list of max_dims to compute the polarization convergence.",
+            help="The list of max_dims of the polarization convergence check (at zero field). "
+            "Default: [10**2, 10**4, 10**6].",
+        )
+        spec.input(
+            "undi_max_hdim",
+            valid_type=orm.Int,
+            required=False,
+            help="The max_dim of the polarization production runs, at every field. Default: 5*10**5, "
+            "10**5 with the `fast` protocol (see `production_max_hdim`).",
+        )
+        spec.input(
+            "undi_single_precision",
+            valid_type=orm.Bool,
+            required=False,
+            help="Run the C++ algorithm of undi in single precision (faster, a small loss of accuracy). Default: True.",
         )
         
         spec.expose_inputs(
@@ -121,7 +135,7 @@ class ImplantMuonWorkChain(WorkChain):
             valid_type=bool,
             default=True,
             non_db=True,
-            help="Attach aiida-monitor to every PwBaseWorkChain relaxation step when aiida-monitor is installed.",
+            help="Attach the `quantumespresso.accuracy_stuck` monitor (from aiida-quantumespresso) to every PwBaseWorkChain relaxation step.",
         )
         spec.input(
             "kind_names",
@@ -130,11 +144,6 @@ class ImplantMuonWorkChain(WorkChain):
             required=False,
             help="The list of kind names to used. Needed to reconstruct kinds if needed.",
         )
-
-        # I think the following is not needed, as we may want to just provide the structure and the fields, max_hdims
-        # and then initialise the workgraph with the structure and the fields and max_hdims.
-        # TOBE understood how to provide a given code (probably the computer... but I need the code)
-        # spec.input_namespace('undi_workgraph', dynamic=True)
 
         ###
         spec.outline(
@@ -184,6 +193,8 @@ class ImplantMuonWorkChain(WorkChain):
         undi_metadata=None,
         undi_fields=None,
         undi_max_hdims=None,
+        undi_max_hdim=None,
+        undi_single_precision=None,
         protocol=None,
         enforce_defaults: bool = True,
         compute_findmuon: bool = True,
@@ -294,6 +305,13 @@ class ImplantMuonWorkChain(WorkChain):
         
         if undi_max_hdims and compute_polarization_undi:
             builder.undi_max_hdims = orm.List(undi_max_hdims)
+
+        if compute_polarization_undi:
+            # production size: the one asked, else the one of the protocol (10^5 for "fast", else 5*10^5)
+            builder.undi_max_hdim = orm.Int(undi_max_hdim or production_max_hdim(protocol))
+
+        if undi_single_precision is not None and compute_polarization_undi:
+            builder.undi_single_precision = orm.Bool(undi_single_precision)
             
         builder.kind_names = orm.List(
             list(
@@ -393,44 +411,48 @@ class ImplantMuonWorkChain(WorkChain):
             self.ctx.structure_group = {'0':self.ctx.structure}
 
     def compute_polarization(self):
-        # here we will submit the workgraph for the polarization estimation. Via Undi and KT.
-        # need to parse all the output structures, and loop on them.
+        # Submit the polarization estimation (Undi and KT) of all the structures.
+        # The defaults for the fields and the max_hdim(s) are those of the `MultiSitesWorkChain`.
+        inputs = {
+            "structure_group": self.ctx.structure_group,
+            "code": self.inputs.undi_code,
+            "metadata": {"call_link_label": "MultiSiteUndiPolarizationAndKT"},
+        }
+        if "undi_metadata" in self.inputs:
+            inputs["task_metadata"] = self.inputs.undi_metadata
+        if "undi_fields" in self.inputs:
+            inputs["B_mods"] = self.inputs.undi_fields
+        if "undi_max_hdims" in self.inputs:
+            inputs["max_hdims"] = self.inputs.undi_max_hdims
+        if "undi_max_hdim" in self.inputs:
+            inputs["max_hdim"] = self.inputs.undi_max_hdim
+        if "undi_single_precision" in self.inputs:
+            inputs["single_precision"] = self.inputs.undi_single_precision
 
-        metadata = self.inputs.get("undi_metadata", None)
-        workgraph = MultiSites.build(
-            structure_group=self.ctx.structure_group,
-            code = getattr(self.inputs, "undi_code", None),
-            max_hdims = self.inputs.get("undi_max_hdims", [10**2, 10**4, 10**6, 10**8]),
-            B_mods = self.inputs.get("undi_fields", [0, 2e-3, 4e-3, 6e-3, 8e-3]),
-            task_metadata = metadata,
-            )
-        inputs = workgraph.to_engine_inputs(
-            metadata={"call_link_label": "MultiSiteUndiPolarizationAndKT"},
-        )
-        process = self.submit(WorkGraphEngine, **inputs)
+        process = self.submit(MultiSitesWorkChain, **inputs)
         self.report(
-            f"submitting `Workgraph` for polarization calculation: <PK={process.pk}>"
+            f"submitting `MultiSitesWorkChain` for polarization calculation: <PK={process.pk}>"
         )
-        self.to_context(workgraph=process)
+        self.to_context(multisites=process)
 
     def results(self):
         """Inspect pol sub-processes."""
-        polarization = self.ctx.get("workgraph", None)
+        polarization = self.ctx.get("multisites", None)
 
-        # should we output the wgraph results here?
-        # Yes, we should collect them in order to easily recover the site index.
         if polarization:
             if not polarization.is_finished_ok:
-                self.report(f"the child WorkGraph with <PK={polarization.pk}> failed")
+                self.report(f"the child MultiSitesWorkChain with <PK={polarization.pk}> failed")
                 return self.exit_codes.ERROR_POLARIZATION_FAILED
             else:
+                # We return the KT of the first site: the results viewer recovers all the sites
+                # (and their index) from the called processes of this node.
+                first_site = next(iter(self.ctx.structure_group))
                 self.out(
-                        "polarization",
-                        #polarization.outputs.execution_count,
-                        polarization.called[0].outputs.results.KT_task,
-                    )
-                self.report(f"Undi calculation was successful.")
-                
+                    "polarization",
+                    polarization.outputs.results[f"site_{first_site}"]["KT_task"],
+                )
+                self.report("Undi calculation was successful.")
+
 
     @staticmethod
     def get_structures_group_from_findmuon(findmuon: FindMuonWorkChain):

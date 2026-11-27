@@ -6,6 +6,7 @@ import base64
 import json
 
 from aiida import orm
+from aiida.common.links import LinkType
 
 
 class PolarizationModel(Model):
@@ -47,6 +48,7 @@ class PolarizationModel(Model):
         value=[1e5],
     )
     plotting_quantity = tl.Unicode("P")  # for the convergence analysis
+    production_max_hdim = tl.Int(allow_none=True, default_value=None)  # max_hdim of the 'undi_runs' (production)
     selected_fields = tl.List(
         trait=tl.Float(),
         value=[0.0],
@@ -157,7 +159,7 @@ class PolarizationModel(Model):
         "in case we want to provide a shelljob for the KT run"
         raise NotImplementedError(
             "This method is not implemented yet, and will be only useful for ShellJobs. \
-                                  Please use the aiida-workgraph plugin."
+                                  Please use the `MultiSitesWorkChain`."
         )
 
     def fetch_data(
@@ -165,24 +167,23 @@ class PolarizationModel(Model):
     ):
         """Load the data from the nodes of undi runs.
         we distinguish if nodes are shelljobs (done as in examples_aiida/shelljob.py) or not,
-        i.e. in case we submitted pythonjobs via the aiida-workgraph plugin.
+        i.e. in case we submitted shell jobs via the `MultiSitesWorkChain`.
         """
         if not hasattr(self, "nodes"):
-            try:
-                self.nodes = self.muon.polarization.base.links.get_incoming().get_node_by_label('execution_count').called
-            except Exception as e:
-                self.nodes = self.muon.polarization.creator.caller.caller.called
-                
-        # workgraph case - always the case in standard situations (qe app usage)
-        if "workgraph" in self.nodes[0].process_type:
+            # polarization is the output of the KT shell job of the first site:
+            # ShellJob -> UndiAndKuboToyabeWorkChain -> MultiSitesWorkChain -> one called work chain per site.
+            self.nodes = self.muon.polarization.creator.caller.caller.called
+
+        # work chain case - always the case in standard situations (qe app usage)
+        if isinstance(self.nodes[0], orm.WorkChainNode):
             # this loops can be improved, for sure there is a smarter way to do this.
             
             self.muons = {} # each muon will be a key of this dictionary.
             
-            for muon in self.nodes: # this need to be the called of the MultiSites task.
+            for muon in self.nodes: # this need to be the called of the MultiSitesWorkChain.
                 
-                #muon_index = muon.base.extras.get("muon_index", 0)
-                muon_index = muon.base.attributes.all.get("metadata_inputs",{}).get("metadata",{}).get("call_link_label","0").replace("polarization_structure_","")
+                # the site index is in the label of the call link: `polarization_structure_{site_index}`.
+                muon_index = muon.base.links.get_incoming(link_type=LinkType.CALL_WORK).all()[0].link_label.replace("polarization_structure_","")
                 
                 if self.mode == "analysis":
                     if not "convergence_check" in muon.base.links.get_outgoing().all_link_labels():
@@ -191,6 +192,13 @@ class PolarizationModel(Model):
                 self.muons[muon_index] = AttributeDict()
                 
                 main_node = muon
+
+                # the max_hdim of the production runs, read from the data: it can differ between calculations.
+                production = [
+                    int(job.inputs.nodes.max_hdim.value)
+                    for job in main_node.base.links.get_outgoing().get_node_by_label("undi_runs").called
+                ]
+                self.production_max_hdim = max(production) if production else None
 
                 search = "undi_runs"
                 if self.mode == "analysis":
@@ -205,13 +213,13 @@ class PolarizationModel(Model):
                 ]
                 
                 fields = [
-                    node.inputs.function_inputs.B_mod.value * 1000 for node in descendants
+                    node.inputs.nodes.B_mod.value * 1000 for node in descendants
                 ]  # mT
                 selected_fields = [
-                    node.inputs.function_inputs.B_mod.value * 1000 for node in descendants
+                    node.inputs.nodes.B_mod.value * 1000 for node in descendants
                 ]  # mT
                 max_hdims = [
-                    int(node.inputs.function_inputs.max_hdim.value) for node in descendants
+                    int(node.inputs.nodes.max_hdim.value) for node in descendants
                 ]
                 
                 self.isotopes = [

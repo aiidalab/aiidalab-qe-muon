@@ -16,7 +16,10 @@ from ase.build import make_supercell
 
 from aiida_muon.utils.sites_supercells import niche_add_impurities, gensup, compute_suggest_supercell_size, generate_supercell_with_impurities
 
-from undi.undi_analysis import check_enough_isotopes
+try:
+    from undi.auto_analysis import check_enough_isotopes
+except ImportError:  # older undi (``update`` branch): the module had another name
+    from undi.undi_analysis import check_enough_isotopes
 
 class MuonConfigurationSettingsModel(PanelModel, HasInputStructure):
     
@@ -44,6 +47,9 @@ class MuonConfigurationSettingsModel(PanelModel, HasInputStructure):
 
     magmoms = tl.List(default_value=[])  # magmoms read from structure extras
     has_magmoms = tl.Bool(False)  # True when the structure carries magnetic moments
+    # the same moments, made collinear as the workflow does: one dictionary per site (see `collinearize_magmoms`).
+    magmoms_collinear = tl.List(default_value=[])
+    magmoms_collinear_error = tl.Unicode("")  # why the collinear moments are not available, if so
     mesh_grid = tl.Unicode("")
 
     compute_gamma_pre_relax = tl.Bool(True)
@@ -259,11 +265,27 @@ class MuonConfigurationSettingsModel(PanelModel, HasInputStructure):
             pass
         return None
 
+    def _update_collinear_magmoms(self):
+        """Compute the collinear moments with the function used by the workflow (no AiiDA provenance)."""
+        from aiidalab_qe_muon.utils.magnetism import collinearize_magmoms
+
+        self.magmoms_collinear_error = ""
+        self.magmoms_collinear = []
+        if not self.magmoms:
+            return
+        try:
+            self.magmoms_collinear = collinearize_magmoms(
+                self.input_structure, self.magmoms
+            )["rows"]
+        except Exception as exc:  # do not break the panel for a display-only feature
+            self.magmoms_collinear_error = f"{type(exc).__name__}: {exc}"
+
     def on_input_structure_change(self, _=None):
         if not self.input_structure:
             self.reset()
             self.magmoms = []
             self.has_magmoms = False
+            self._update_collinear_magmoms()
         else:
             # Read magnetic moments stored as extras on the structure node
             raw = self.input_structure.base.extras.all.get("magmom", None)
@@ -274,6 +296,7 @@ class MuonConfigurationSettingsModel(PanelModel, HasInputStructure):
             else:
                 self.magmoms = []
                 self.has_magmoms = False
+            self._update_collinear_magmoms()
 
             self.check_polarization_allowed()
             self.disable_x, self.disable_y, self.disable_z = True, True, True

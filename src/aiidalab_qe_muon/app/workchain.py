@@ -140,22 +140,17 @@ def get_builder(codes, structure, parameters):
     overrides["base_relax"]["pw"]["metadata"] = create_resource_config(codes.get("pw_muons"))
     
     undi_metadata = create_resource_config(codes.get("undi_code"))
-    #undi_metadata["options"]["prepend_text"] =  \
-    #    f'export OMP_NUM_THREADS={undi_metadata["options"]["resources"]["num_cores_per_mpiproc"]}'
+    # (the OpenMP threads of undi follow the resources: see `undi_interface/calculations/shelljobs.py`)
     
     if compute_polarization_undi:
         undi_fields = list(set(parameters["muonic"].pop("undi_fields", [])))
         # conversion from mT to T: 
         undi_fields = [field * 1e-3 for field in undi_fields]
-        
-        if protocol == "fast":
-            undi_max_hdims = [10**2, 10**4, 10**6]
-        else:
-            undi_max_hdims = []
     else:
         undi_fields = []
-        undi_max_hdims = []
-    
+    # The Hilbert-space dimensions are those of the work chains: convergence check with 10^2, 10^4 and 10^6; production
+    # runs with 5*10^5, or 10^5 with the "fast" protocol (chosen in `ImplantMuonWorkChain.get_builder_from_protocol`).
+
     builder = ImplantMuonWorkChain.get_builder_from_protocol(
         pw_muons_code=pw_code,
         pp_code=pp_code,
@@ -168,7 +163,6 @@ def get_builder(codes, structure, parameters):
         compute_findmuon=compute_findmuon,
         compute_polarization_undi=compute_polarization_undi,
         undi_fields=undi_fields if len(undi_fields) > 0 else None,
-        undi_max_hdims=undi_max_hdims if len(undi_max_hdims) > 0 else None,
         overrides=overrides,
         trigger=trigger,
         relax_unitcell=False,  # but not true in the construction; in the end you relax in the first step of the QeAppWorkchain.

@@ -68,6 +68,8 @@
   <div class="alert alert-warning">
     <b>Note:</b> For the purpose of completing this guide in short time, we will use the <b>Fast</b> protocol for default parameters.
     However, you if dispose of enough computational resources, you can also select Balanced or Stringent.
+    With the <b>Fast</b> protocol the polarization is computed with a smaller Hilbert space
+    (max<sub>hdim</sub>=10<sup>5</sup>) than with Balanced or Stringent (5&middot;10<sup>5</sup>).
   </div>
 </div>
 
@@ -137,7 +139,7 @@
   <div class="alert alert-warning">
     <b>Warning:</b> If running locally (for example, on the AiiDAlab demo
     server), we recommend keeping nodes and CPUs at the default minimum of 1
-    each.
+    each (except for the <b>cpus-per-task</b> of the <b>python</b> (undi) code, see below).
   </div>
   <p>
     Once the resources are defined, we can optionally customize the workflow
@@ -158,12 +160,21 @@
       documentation</a
     >.
   </p>
+  <p>
+    The polarization is computed by running the command line of
+    <a href="https://undi.readthedocs.io/en/latest/index.html" target="_blank">undi</a>
+    (<code>python -m undi</code>) as a <b>shell job</b> (with <code>aiida-shell</code>). The <b>python</b> (undi) code is
+    therefore a python, with the <code>core.shell</code> plugin, whose environment has <code>undi</code> installed:
+    it is <code>python3-shell@localhost</code>, created when the plugin is installed. If it is not in the list of the
+    codes, open a terminal and run <code>aiidalab-qe-muon setup-python3</code>, then reload the page.
+  </p>
   <div class="alert alert-success">
     <h4>Tasks</h4>
     <ol>
-      <li>Select 1 node and 1 CPU for the <b>pw.x</b>, <b>pp.x</b> and <b>python</b> (undi) codes below</li>
-      <li>If possible, select more than 1 <b>cpus-per-task</b> for the <b>python</b> (undi) code: click on the <b>More</b> button
-      to see more resources settings and find the corresponding one</li>
+      <li>Select 1 node and 1 CPU for the <b>pw.x</b> and <b>pp.x</b> codes below</li>
+      <li>Select the <b>python</b> (undi) code, <code>python3-shell@localhost</code>, with 1 node and 1 CPU, and set
+      <b>cpus-per-task</b> to <b>4</b>: click on the <b>More</b> button to see more resources settings and find the
+      corresponding one. undi uses them as its parallel (OpenMP) threads</li>
       <li><b>(Optional)</b> customize the workflow label</li>
       <li><b>(Optional)</b> add a workflow description</li>
       <li>Click the <b>Submit</b> button to proceed</li>
@@ -224,7 +235,7 @@
       <li>
         Verify that the polarization function is converged for max<sub>hdim</sub> > 10<sup>2</sup>: the curves for
         max<sub>hdim</sub>=10<sup>2</sup> and 10<sup>4</sup> are compared with the reference one (10<sup>6</sup>, the largest
-        one; the polarization plot uses 5&middot;10<sup>5</sup>). This can be seen in the <b>Convergence analysis</b> panel.
+        one; with the <b>Fast</b> protocol the polarization plot uses 10<sup>5</sup>). This can be seen in the <b>Convergence analysis</b> panel.
       </li>
     </ol>
   </div>

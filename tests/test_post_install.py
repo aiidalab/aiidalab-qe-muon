@@ -8,87 +8,6 @@ from click.testing import CliRunner
 from aiidalab_qe_muon import __main__ as plugin_cli
 
 
-def test_verify_post_install_passes(monkeypatch, tmp_path):
-    executable = tmp_path / "python3"
-    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    executable.chmod(0o755)
-    monkeypatch.setattr(plugin_cli, "load_profile", lambda _profile: None)
-    monkeypatch.setattr(
-        plugin_cli,
-        "load_code",
-        lambda _label: SimpleNamespace(filepath_executable=str(executable)),
-    )
-
-    result = CliRunner().invoke(plugin_cli.cli, ["verify-post-install"])
-
-    assert result.exit_code == 0
-    assert "setup is valid" in result.output
-
-
-def test_verify_post_install_fails_when_code_is_missing(monkeypatch):
-    from aiida.common.exceptions import NotExistent
-
-    monkeypatch.setattr(plugin_cli, "load_profile", lambda _profile: None)
-
-    def missing_code(_label):
-        raise NotExistent("missing")
-
-    monkeypatch.setattr(plugin_cli, "load_code", missing_code)
-
-    result = CliRunner().invoke(plugin_cli.cli, ["verify-post-install"])
-
-    assert result.exit_code != 0
-    assert "python3-shell@localhost is not configured" in result.output
-
-
-@pytest.mark.parametrize(
-    ("path_state", "expected_message"),
-    [
-        ("unset", "python3-shell@localhost executable is not set"),
-        ("missing", "python3-shell@localhost executable is missing"),
-        ("directory", "python3-shell@localhost executable is not a file"),
-        ("not_executable", "python3-shell@localhost executable is not executable"),
-    ],
-)
-def test_verify_post_install_reports_executable_path_state(
-    monkeypatch, tmp_path, path_state, expected_message
-):
-    executable = tmp_path / "python3"
-    if path_state == "unset":
-        filepath = None
-    elif path_state == "directory":
-        executable.mkdir()
-        filepath = str(executable)
-    elif path_state == "not_executable":
-        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        executable.chmod(0o644)
-        filepath = str(executable)
-    else:
-        filepath = str(executable)
-    monkeypatch.setattr(plugin_cli, "load_profile", lambda _profile: None)
-    monkeypatch.setattr(
-        plugin_cli,
-        "load_code",
-        lambda _label: SimpleNamespace(filepath_executable=filepath),
-    )
-
-    result = CliRunner().invoke(plugin_cli.cli, ["verify-post-install"])
-
-    assert result.exit_code != 0
-    assert expected_message in result.output
-
-
-def test_verify_uses_the_default_profile_unless_told_otherwise(monkeypatch):
-    """`--profile` defaults to the default profile (it used to be a profile called `default`)."""
-    profiles = []
-    monkeypatch.setattr(plugin_cli, "load_profile", lambda profile=None: profiles.append(profile))
-    monkeypatch.setattr(plugin_cli, "load_code", lambda label: SimpleNamespace(filepath_executable=sys.executable))
-
-    assert CliRunner().invoke(plugin_cli.cli, ["verify-post-install"]).exit_code == 0
-    assert CliRunner().invoke(plugin_cli.cli, ["verify-post-install", "-p", "other"]).exit_code == 0
-    assert profiles == [None, "other"]
-
-
 class FakeInstalledCode:
     """Stand-in for `InstalledCode`, to see what the setup creates."""
 
@@ -117,6 +36,7 @@ def fake_setup(monkeypatch):
     monkeypatch.setattr(plugin_cli, "load_profile", lambda *args: None)
     monkeypatch.setattr(plugin_cli, "load_code", missing_code)
     monkeypatch.setattr(plugin_cli, "load_computer", lambda label: SimpleNamespace(label=label))
+    monkeypatch.setattr(plugin_cli, "_computers", lambda: [SimpleNamespace(label="localhost")])
     monkeypatch.setattr(plugin_cli, "InstalledCode", FakeInstalledCode)
     monkeypatch.setattr("aiida.plugins.CalculationFactory", lambda name: object)
     return loaded
@@ -172,6 +92,7 @@ def test_setup_says_what_is_missing(fake_setup, monkeypatch):
         raise NotExistent("no computer")
 
     monkeypatch.setattr(plugin_cli, "load_computer", no_computer)
+    monkeypatch.setattr(plugin_cli, "_computers", lambda: [])
     result = CliRunner().invoke(plugin_cli.cli, ["setup-python3", "--computer", "nowhere"])
     assert result.exit_code != 0 and "computer `nowhere` does not exist" in result.output
 
@@ -179,6 +100,8 @@ def test_setup_says_what_is_missing(fake_setup, monkeypatch):
 def test_setup_does_nothing_if_the_code_exists(monkeypatch):
     monkeypatch.setattr(plugin_cli, "load_profile", lambda *args: None)
     monkeypatch.setattr(plugin_cli, "load_code", lambda label: SimpleNamespace())
+    monkeypatch.setattr(plugin_cli, "load_computer", lambda label: SimpleNamespace(label=label))
+    monkeypatch.setattr("aiida.plugins.CalculationFactory", lambda name: object)
     monkeypatch.setattr(plugin_cli, "InstalledCode", FakeInstalledCode)
     FakeInstalledCode.created = []
 
@@ -188,8 +111,62 @@ def test_setup_does_nothing_if_the_code_exists(monkeypatch):
     assert "already installed" in result.output
 
 
-def test_setup_and_verify_on_a_real_profile(aiida_localhost, monkeypatch):
-    """The real `InstalledCode`: created once, found by verify, the second setup does nothing."""
+def _computers_in_profile(monkeypatch, labels):
+    """A profile with these computers only (`load_computer` raises for the others)."""
+    from aiida.common.exceptions import NotExistent
+
+    computers = {label: SimpleNamespace(label=label) for label in labels}
+
+    def load_computer(label):
+        try:
+            return computers[label]
+        except KeyError:
+            raise NotExistent(label)
+
+    monkeypatch.setattr(plugin_cli, "load_computer", load_computer)
+    monkeypatch.setattr(plugin_cli, "_computers", lambda: list(computers.values()))
+
+
+def test_setup_uses_the_only_computer_if_there_is_no_localhost(fake_setup, monkeypatch):
+    """A deployment with only a HyperQueue computer: the code goes there, and the message says so."""
+    _computers_in_profile(monkeypatch, ["hq"])
+
+    result = CliRunner().invoke(plugin_cli.cli, ["setup-python3"])
+
+    assert result.exit_code == 0, result.output
+    assert fake_setup == ["python3-shell@hq"]
+    assert FakeInstalledCode.created[0]["computer"].label == "hq"
+    assert "using the only one of the profile, `hq`" in result.output
+
+
+def test_setup_prefers_localhost_over_the_other_computers(fake_setup, monkeypatch):
+    _computers_in_profile(monkeypatch, ["hq", "localhost"])
+
+    assert CliRunner().invoke(plugin_cli.cli, ["setup-python3"]).exit_code == 0
+    assert fake_setup == ["python3-shell@localhost"]
+
+
+def test_setup_lists_the_computers_if_the_choice_is_ambiguous(fake_setup, monkeypatch):
+    _computers_in_profile(monkeypatch, ["hq", "cluster"])
+
+    result = CliRunner().invoke(plugin_cli.cli, ["setup-python3"])
+
+    assert result.exit_code != 0
+    assert "hq, cluster" in result.output and "--computer" in result.output
+    assert not FakeInstalledCode.created
+
+
+def test_setup_explicit_computer_is_not_replaced_by_another(fake_setup, monkeypatch):
+    _computers_in_profile(monkeypatch, ["hq"])
+
+    result = CliRunner().invoke(plugin_cli.cli, ["setup-python3", "--computer", "nowhere"])
+
+    assert result.exit_code != 0
+    assert "`nowhere` does not exist" in result.output and "available: hq" in result.output
+
+
+def test_setup_on_a_real_profile(aiida_localhost, monkeypatch):
+    """The real `InstalledCode`: created once, the second setup does nothing."""
     pytest.importorskip("aiida_shell")
     monkeypatch.setattr(plugin_cli, "load_profile", lambda *args: None)  # the profile is loaded by the fixture
 
@@ -200,6 +177,5 @@ def test_setup_and_verify_on_a_real_profile(aiida_localhost, monkeypatch):
     assert str(code.filepath_executable) == sys.executable
     assert code.default_calc_job_plugin == "core.shell"
 
-    assert CliRunner().invoke(plugin_cli.cli, ["verify-post-install"]).exit_code == 0
     again = CliRunner().invoke(plugin_cli.cli, ["setup-python3"])
     assert again.exit_code == 0 and "already installed" in again.output

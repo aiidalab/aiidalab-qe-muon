@@ -61,7 +61,7 @@ class ImportMagnetism(StructureUploadWidget):
         super().__init__()
         self.title = title
         self.message = ipw.HTML(
-            "<b>Please note:</b> the magnetic moments of the uploaded mcif are kept with the structure and "
+            '<b style="color: red;">Please note:</b> the magnetic moments of the uploaded mcif are kept with the structure and '
             "are used in the muon simulations, after being made collinear "
             "(the <i>Muon settings</i> panel of step 2 shows both the mcif and the collinear moments).<br>"
             "<b>They will be overridden</b> if you set the magnetism in step 2, i.e. the "

@@ -19,11 +19,11 @@ The polarization is computed by running the command line of [undi](https://undi.
 
 On the local computer, to set up the code with the python of the environment that runs the command (the one with `undi`;
 it is labelled `python3-shell@localhost`, so it does not clash with the `python3` code of the former `aiida-pythonjob`
-version; use `--label` and `--computer` for other names):
+version; use `--label` and `--computer` for other names. Without `--computer`, it uses `localhost`, or the only
+computer of the profile if there is no `localhost`):
 
 ```shell
 aiidalab-qe-muon setup-python3
-aiidalab-qe-muon verify-post-install
 ```
 
 On a computer (local or remote) already set up in AiiDA, you can create the environment and the code by hand. For example,

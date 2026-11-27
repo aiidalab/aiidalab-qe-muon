@@ -36,6 +36,15 @@ DEFAULT_MAX_HDIMS = [10**2, 10**4, 10**6]
 # ... and the one of the production runs, at every field.
 DEFAULT_MAX_HDIM = 5 * 10**5
 
+# The "fast" protocol of the app trades accuracy for speed: its production runs use a smaller Hilbert space.
+PROTOCOL_MAX_HDIM = {"fast": 10**5}
+
+
+def production_max_hdim(protocol=None) -> int:
+    """The max_hdim of the production runs for a protocol: 10^5 for "fast", else :data:`DEFAULT_MAX_HDIM` (5*10^5)."""
+    return PROTOCOL_MAX_HDIM.get(str(protocol).lower(), DEFAULT_MAX_HDIM)
+
+
 # The metadata of the jobs, if none is given. The OpenMP threads of undi follow the resources of the jobs (see
 # `shelljobs.omp_threads`): one CPU, so one thread, if the resources are not given.
 DEFAULT_TASK_METADATA: dict = {}

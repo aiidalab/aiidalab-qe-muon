@@ -8,6 +8,7 @@ from aiida.engine import if_
 
 from aiidalab_qe_muon.undi_interface.workflows.workchains import (
     MultiSitesWorkChain,
+    production_max_hdim,
 )
 
 from aiida_quantumespresso.data.hubbard_structure import HubbardStructureData
@@ -74,7 +75,8 @@ class ImplantMuonWorkChain(WorkChain):
             "undi_max_hdim",
             valid_type=orm.Int,
             required=False,
-            help="The max_dim of the polarization production runs, at every field. Default: 5*10**5.",
+            help="The max_dim of the polarization production runs, at every field. Default: 5*10**5, "
+            "10**5 with the `fast` protocol (see `production_max_hdim`).",
         )
         spec.input(
             "undi_single_precision",
@@ -304,8 +306,9 @@ class ImplantMuonWorkChain(WorkChain):
         if undi_max_hdims and compute_polarization_undi:
             builder.undi_max_hdims = orm.List(undi_max_hdims)
 
-        if undi_max_hdim and compute_polarization_undi:
-            builder.undi_max_hdim = orm.Int(undi_max_hdim)
+        if compute_polarization_undi:
+            # production size: the one asked, else the one of the protocol (10^5 for "fast", else 5*10^5)
+            builder.undi_max_hdim = orm.Int(undi_max_hdim or production_max_hdim(protocol))
 
         if undi_single_precision is not None and compute_polarization_undi:
             builder.undi_single_precision = orm.Bool(undi_single_precision)

@@ -148,8 +148,8 @@ def get_builder(codes, structure, parameters):
         undi_fields = [field * 1e-3 for field in undi_fields]
     else:
         undi_fields = []
-    # The Hilbert-space dimensions are those of the work chains: convergence check with 10^2, 10^4 and 10^6,
-    # production runs with 10^6.
+    # The Hilbert-space dimensions are those of the work chains: convergence check with 10^2, 10^4 and 10^6; production
+    # runs with 5*10^5, or 10^5 with the "fast" protocol (chosen in `ImplantMuonWorkChain.get_builder_from_protocol`).
 
     builder = ImplantMuonWorkChain.get_builder_from_protocol(
         pw_muons_code=pw_code,

@@ -301,3 +301,15 @@ def test_implant_muon_polarization_only(fake_shelljob, code, monkeypatch):
     assert labels_of(multisites) == ["polarization_structure_0"]
     assert isinstance(results["polarization"], orm.Dict)
     assert results["polarization"].pk == multisites.outputs.results["site_0"]["KT_task"].pk
+
+
+@pytest.mark.parametrize(
+    ("protocol", "max_hdim"),
+    [("fast", 10**5), ("FAST", 10**5), ("moderate", 5 * 10**5), ("precise", 5 * 10**5), (None, 5 * 10**5)],
+)
+def test_production_size_depends_on_the_protocol(protocol, max_hdim):
+    """5*10^5 for production, 10^5 with the `fast` protocol (set in `ImplantMuonWorkChain.get_builder_from_protocol`)."""
+    from aiidalab_qe_muon.undi_interface.workflows.workchains import DEFAULT_MAX_HDIM, production_max_hdim
+
+    assert DEFAULT_MAX_HDIM == 5 * 10**5
+    assert production_max_hdim(protocol) == max_hdim
